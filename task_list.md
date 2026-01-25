@@ -20,16 +20,16 @@
 
 ---
 
-### 4. [ ] Path helpers
+### 4. [x] Path helpers
 
 Implement canonical path functions in shared library: config path, password path, log path, socket path, mount paths.
 
 **Acceptance criteria:**
 
-- Functions for all paths in spec.md Section 3
-- Respects XDG directories with fallbacks
-- Unit tests for each path function
-- `[BLOCKED BY: #1]`
+- [x] Functions for all paths in spec.md Section 3
+- [x] Respects XDG directories with fallbacks
+- [x] Unit tests for each path function
+- `[BLOCKED BY: #1]` (Branch: `feature/path-helpers`)
 
 ---
 

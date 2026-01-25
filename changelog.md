@@ -224,3 +224,36 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - Unblocks: Task #5 (Daemon skeleton), Task #10 (Daemon status/snapshots).
+
+---
+
+## [2026-01-25] — lib: implement path helpers
+
+**What changed:**
+
+- Implemented standard path helper functions in `crates/backutil-lib/src/paths.rs`.
+- Added functions for: `config_dir`, `config_path`, `password_path`, `log_path`, `socket_path`, `pid_path`, `mount_base_dir`, `mount_path`, and `systemd_unit_path`.
+- Added `libc` dependency to correctly handle UID-based fallbacks for Unix socket and PID files.
+- Exported `paths` module in `backutil-lib`.
+- Added comprehensive unit tests for all path functions.
+
+**Why:**
+
+- Implements Task #4 and Section 3 of `spec.md`.
+- Provides a centralized, consistent way to handle project paths across all components.
+
+**Files affected:**
+
+- Cargo.toml (updated)
+- crates/backutil-lib/Cargo.toml (updated)
+- crates/backutil-lib/src/paths.rs (new)
+- crates/backutil-lib/src/lib.rs (updated)
+
+**Testing notes:**
+
+- Added unit tests in `paths.rs` verifying each path's structure and suffix.
+- Verified that all tests pass with `cargo test -p backutil-lib`.
+
+**Dependencies/blockers:**
+
+- Unblocks: Task #5 (Daemon skeleton), Task #8 (Restic executor), Task #18 (CLI logs).

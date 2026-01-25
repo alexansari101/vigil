@@ -3,6 +3,7 @@
 
 pub mod config;
 pub mod ipc;
+pub mod paths;
 pub mod types;
 
 #[cfg(test)]

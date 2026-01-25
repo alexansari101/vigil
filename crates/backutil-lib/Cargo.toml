@@ -11,6 +11,7 @@ thiserror.workspace = true
 anyhow.workspace = true
 directories.workspace = true
 chrono.workspace = true
+libc = "0.2"
 
 [dev-dependencies]
 tempfile.workspace = true
