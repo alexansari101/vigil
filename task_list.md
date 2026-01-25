@@ -18,19 +18,6 @@
 
 ## Phase 1: Foundation
 
-### 1. [x] Project scaffolding
-
-Create Cargo workspace with crate structure. Set up shared dependencies. Ensure `cargo build` and `cargo test` pass (with no-op tests).
-
-**Acceptance criteria:**
-
-- Workspace compiles with no errors
-- Each crate has a placeholder `lib.rs` or `main.rs`
-- CI-ready: `cargo fmt --check` and `cargo clippy` pass
-
-**Branch:** `feature/project-scaffold`
-**Completed:** 2026-01-24
-
 ---
 
 ### 2. [ ] Config parsing
@@ -408,9 +395,7 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ## Completed Tasks
 
-<!-- Move completed tasks here with branch name and completion date -->
-<!-- Example:
 ### 1. [x] Project scaffolding
+
 Branch: `feature/project-scaffold`
-Completed: 2024-01-15
--->
+Completed: 2026-01-24
