@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use directories::ProjectDirs;
+use std::path::PathBuf;
 
 /// Get the project directories for backutil.
 fn project_dirs() -> Option<ProjectDirs> {

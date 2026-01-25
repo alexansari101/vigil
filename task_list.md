@@ -18,18 +18,7 @@
 
 ## Phase 1: Foundation
 
----
-
-### 4. [x] Path helpers
-
-Implement canonical path functions in shared library: config path, password path, log path, socket path, mount paths.
-
-**Acceptance criteria:**
-
-- [x] Functions for all paths in spec.md Section 3
-- [x] Respects XDG directories with fallbacks
-- [x] Unit tests for each path function
-- `[BLOCKED BY: #1]` (Branch: `feature/path-helpers`)
+*All Phase 1 tasks completed.*
 
 ---
 
@@ -382,4 +371,9 @@ Completed: 2026-01-25
 ### 3. [x] Shared types and IPC messages
 
 Branch: `feature/shared-types-ipc`
+Completed: 2026-01-25
+
+### 4. [x] Path helpers
+
+Branch: `feature/path-helpers`
 Completed: 2026-01-25

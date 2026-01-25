@@ -227,7 +227,7 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
-## [2026-01-25] — lib: implement path helpers
+## [2026-01-25] f037857 — lib: implement path helpers
 
 **What changed:**
 

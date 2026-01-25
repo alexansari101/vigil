@@ -139,13 +139,7 @@ fn expand_home(path: &str) -> String {
 pub fn load_config() -> Result<Config, ConfigError> {
     let path = std::env::var("BACKUTIL_CONFIG")
         .map(PathBuf::from)
-        .or_else(|_| {
-            directories::ProjectDirs::from("com", "backutil", "backutil")
-                .map(|p| p.config_dir().join("config.toml"))
-                .ok_or_else(|| {
-                    ConfigError::Validation("Could not determine config directory".to_string())
-                })
-        })?;
+        .unwrap_or_else(|_| crate::paths::config_path());
 
     if !path.exists() {
         return Err(ConfigError::Io(std::io::Error::new(
