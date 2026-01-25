@@ -6,20 +6,24 @@ use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 
 struct Daemon {
     pid_path: PathBuf,
     socket_path: PathBuf,
+    shutdown_tx: broadcast::Sender<()>,
 }
 
 impl Daemon {
     fn new() -> Result<Self> {
         let pid_path = paths::pid_path();
         let socket_path = paths::socket_path();
+        let (shutdown_tx, _) = broadcast::channel(1);
         Ok(Self {
             pid_path,
             socket_path,
+            shutdown_tx,
         })
     }
 
@@ -77,14 +81,16 @@ impl Daemon {
 
         let mut sigterm = signal(SignalKind::terminate())?;
         let mut sigint = signal(SignalKind::interrupt())?;
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
 
         loop {
             tokio::select! {
                 accept_res = listener.accept() => {
                     match accept_res {
                         Ok((stream, _)) => {
+                            let shutdown_tx = self.shutdown_tx.clone();
                             tokio::spawn(async move {
-                                if let Err(e) = handle_client(stream).await {
+                                if let Err(e) = handle_client(stream, shutdown_tx).await {
                                     error!("Error handling client: {}", e);
                                 }
                             });
@@ -102,6 +108,10 @@ impl Daemon {
                     info!("Received SIGINT, shutting down...");
                     break;
                 }
+                _ = shutdown_rx.recv() => {
+                    info!("Received shutdown request via IPC, shutting down...");
+                    break;
+                }
             }
         }
 
@@ -109,7 +119,7 @@ impl Daemon {
     }
 }
 
-async fn handle_client(mut stream: UnixStream) -> Result<()> {
+async fn handle_client(mut stream: UnixStream, shutdown_tx: broadcast::Sender<()>) -> Result<()> {
     let (reader, mut writer) = stream.split();
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
@@ -139,14 +149,9 @@ async fn handle_client(mut stream: UnixStream) -> Result<()> {
             }
             Request::Shutdown => {
                 info!("Shutdown requested via IPC");
-                // We could use a broadcast channel or something to notify the main loop,
-                // but for now let's just respond and the user can kill the daemon.
-                // Actually, Shutdown should probably trigger the graceful exit.
-                // For now, let's just return a placeholder.
-                Response::Error {
-                    code: "NotImplemented".into(),
-                    message: "Shutdown via IPC not yet implemented".into(),
-                }
+                // Send shutdown signal before responding
+                let _ = shutdown_tx.send(());
+                Response::Ok(None)
             }
             _ => Response::Error {
                 code: "NotImplemented".into(),
@@ -156,6 +161,11 @@ async fn handle_client(mut stream: UnixStream) -> Result<()> {
 
         let json = serde_json::to_string(&response)? + "\n";
         writer.write_all(json.as_bytes()).await?;
+
+        // If shutdown was requested, close connection after responding
+        if matches!(request, Request::Shutdown) {
+            break;
+        }
     }
 
     Ok(())
@@ -186,9 +196,12 @@ mod tests {
         let pid_path = tmp.path().join("backutil.pid");
         let socket_path = tmp.path().join("backutil.sock");
 
+        let (shutdown_tx, _) = broadcast::channel(1);
+
         let daemon = Daemon {
             pid_path: pid_path.clone(),
             socket_path: socket_path.clone(),
+            shutdown_tx,
         };
 
         daemon.create_pid_file()?;
