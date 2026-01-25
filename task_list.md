@@ -24,20 +24,6 @@
 
 ## Phase 2: Daemon Core
 
-### 5. [ ] Daemon skeleton with IPC server
-
-Create daemon binary. Implement Unix socket server that accepts connections and parses IPC messages. Respond to `Ping` with `Pong`.
-
-**Acceptance criteria:**
-
-- Daemon starts and listens on socket path
-- Creates PID file, removes on shutdown
-- Handles `Ping` request, returns `Pong`
-- Graceful shutdown on SIGTERM
-- `[BLOCKED BY: #3, #4]`
-
----
-
 ### 6. [ ] File watcher
 
 Implement inotify-based directory watching. Detect file creates, modifies, deletes in configured source directories.
@@ -376,4 +362,9 @@ Completed: 2026-01-25
 ### 4. [x] Path helpers
 
 Branch: `feature/path-helpers`
+Completed: 2026-01-25
+
+### 5. [x] Daemon skeleton with IPC server
+
+Branch: `feature/daemon-skeleton`
 Completed: 2026-01-25

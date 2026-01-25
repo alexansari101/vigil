@@ -257,3 +257,36 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - Unblocks: Task #5 (Daemon skeleton), Task #8 (Restic executor), Task #18 (CLI logs).
+
+---
+
+## [2026-01-25] c8e7f76 — daemon: implement skeleton with IPC server and graceful shutdown
+
+**What changed:**
+
+- Implemented `Daemon` struct with PID file management and Unix socket lifecycle.
+- Added line-based JSON IPC server handling `Ping` and `Status` (placeholder).
+- Implemented graceful shutdown on `SIGTERM` and `SIGINT` with proper cleanup.
+- Added unit tests for PID file management and manual verification for IPC.
+- Updated workspace dependencies to include `tracing-subscriber`.
+
+**Why:**
+
+- Implements Task #5 and core infrastructure for the daemon.
+- Enables basic health checking and IPC foundation for CLI/TUI.
+
+**Files affected:**
+
+- crates/backutil-daemon/src/main.rs (updated)
+- crates/backutil-daemon/Cargo.toml (updated)
+- Cargo.toml (updated)
+
+**Testing notes:**
+
+- Unit tests for PID file creation and cleanup.
+- Manual verification: daemon starts, creates PID/socket, responds to `Ping` via `nc -U`, and shuts down cleanly on `SIGTERM`.
+- Verified PID file prevents multiple instances.
+
+**Dependencies/blockers:**
+
+- Unblocks: Task #6 (File watcher), Task #8 (Restic executor), Task #13 (CLI status).

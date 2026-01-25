@@ -70,9 +70,9 @@ impl Daemon {
             fs::remove_file(&self.socket_path)?;
         }
 
-        let listener = UnixListener::bind(&self.socket_path)
-            .context("Failed to bind Unix socket")?;
-        
+        let listener =
+            UnixListener::bind(&self.socket_path).context("Failed to bind Unix socket")?;
+
         info!("Daemon listening on {:?}", self.socket_path);
 
         let mut sigterm = signal(SignalKind::terminate())?;
@@ -167,11 +167,11 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let daemon = Daemon::new()?;
-    
+
     let res = daemon.run().await;
-    
+
     daemon.cleanup();
-    
+
     res
 }
 
@@ -185,7 +185,7 @@ mod tests {
         let tmp = tempdir()?;
         let pid_path = tmp.path().join("backutil.pid");
         let socket_path = tmp.path().join("backutil.sock");
-        
+
         let daemon = Daemon {
             pid_path: pid_path.clone(),
             socket_path: socket_path.clone(),
@@ -193,7 +193,7 @@ mod tests {
 
         daemon.create_pid_file()?;
         assert!(pid_path.exists());
-        
+
         let pid_content = fs::read_to_string(&pid_path)?;
         assert_eq!(pid_content, std::process::id().to_string());
 
