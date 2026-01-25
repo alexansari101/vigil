@@ -43,9 +43,7 @@ mod tests {
             is_mounted: false,
         };
 
-        let resp = Response::Ok(Some(ResponseData::Status {
-            sets: vec![status],
-        }));
+        let resp = Response::Ok(Some(ResponseData::Status { sets: vec![status] }));
 
         let json = serde_json::to_string(&resp).unwrap();
         let decoded: Response = serde_json::from_str(&json).unwrap();
@@ -79,5 +77,53 @@ mod tests {
             let decoded: JobState = serde_json::from_str(&json).unwrap();
             assert_eq!(state, decoded);
         }
+    }
+
+    #[test]
+    fn verify_json_wire_format() {
+        // Test Request format matches spec: {"type":"Backup","payload":{"set_name":"personal"}}
+        let req = Request::Backup {
+            set_name: Some("personal".to_string()),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        println!("\nActual Backup request: {}", json);
+        assert!(
+            json.contains(r#""type":"Backup""#),
+            "Should have type:Backup"
+        );
+        assert!(
+            json.contains(r#""payload":"#),
+            "Should have payload wrapper"
+        );
+
+        // Test Response format matches spec: {"type":"Ok","payload":{"kind":"BackupStarted",...}}
+        let resp = Response::Ok(Some(ResponseData::BackupStarted {
+            set_name: "personal".to_string(),
+        }));
+        let json = serde_json::to_string(&resp).unwrap();
+        println!("Actual BackupStarted: {}", json);
+        assert!(json.contains(r#""type":"Ok""#), "Should have type:Ok");
+        assert!(
+            json.contains(r#""kind":"BackupStarted""#),
+            "Should have kind:BackupStarted"
+        );
+
+        // Test BackupComplete response
+        let complete = Response::Ok(Some(ResponseData::BackupComplete {
+            set_name: "personal".to_string(),
+            snapshot_id: "a1b2c3d4".to_string(),
+            added_bytes: 1048576,
+            duration_secs: 4.2,
+        }));
+        let json = serde_json::to_string(&complete).unwrap();
+        println!("Actual BackupComplete: {}", json);
+        assert!(
+            json.contains(r#""kind":"BackupComplete""#),
+            "Should have kind:BackupComplete"
+        );
+        assert!(
+            json.contains(r#""snapshot_id":"a1b2c3d4""#),
+            "Should have snapshot_id"
+        );
     }
 }

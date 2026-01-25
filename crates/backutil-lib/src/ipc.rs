@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::types::{SetStatus, SnapshotInfo};
+use serde::{Deserialize, Serialize};
 
 /// IPC Request from client (CLI/TUI) to daemon.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
