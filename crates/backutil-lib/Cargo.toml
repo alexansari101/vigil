@@ -1,0 +1,13 @@
+[package]
+name = "backutil-lib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+directories.workspace = true
+chrono.workspace = true
