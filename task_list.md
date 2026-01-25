@@ -20,19 +20,6 @@
 
 ---
 
-### 3. [ ] Shared types and IPC messages
-
-Define all types from spec.md Sections 5-6 in shared library. Implement JSON serialization/deserialization.
-
-**Acceptance criteria:**
-
-- All IPC request/response types defined
-- All shared types (JobState, SetStatus, BackupResult, SnapshotInfo) defined
-- Round-trip serialization tests for each message type
-- `[BLOCKED BY: #1]`
-
----
-
 ### 4. [ ] Path helpers
 
 Implement canonical path functions in shared library: config path, password path, log path, socket path, mount paths.
@@ -390,4 +377,9 @@ Completed: 2026-01-24
 ### 2. [x] Config parsing
 
 Branch: `feature/config-parsing`
+Completed: 2026-01-25
+
+### 3. [x] Shared types and IPC messages
+
+Branch: `feature/shared-types-ipc`
 Completed: 2026-01-25

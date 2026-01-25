@@ -192,3 +192,35 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - Unblocks: Task #6 (File watcher), Task #14 (CLI init).
+
+---
+
+## [2026-01-25] c98161a — lib: implement shared types and IPC messages
+
+**What changed:**
+
+- Defined shared job and status types: `JobState`, `SetStatus`, `BackupResult`, `SnapshotInfo`.
+- Defined IPC communication protocol: `Request`, `Response`, `ResponseData`.
+- Enabled `serde` feature for `chrono` in workspace.
+- Implemented round-trip JSON serialization tests for all IPC messages.
+
+**Why:**
+
+- Implements Task #3 and Section 5-6 of `spec.md`.
+- Provides the communication contract between daemon and CLI/TUI.
+
+**Files affected:**
+
+- Cargo.toml (updated)
+- crates/backutil-lib/src/types.rs (new)
+- crates/backutil-lib/src/ipc.rs (new)
+- crates/backutil-lib/src/lib.rs (updated)
+
+**Testing notes:**
+
+- Added comprehensive unit tests for serialization/deserialization of each request and response variant.
+- Verified that all tests pass with `cargo test -p backutil-lib`.
+
+**Dependencies/blockers:**
+
+- Unblocks: Task #5 (Daemon skeleton), Task #10 (Daemon status/snapshots).
