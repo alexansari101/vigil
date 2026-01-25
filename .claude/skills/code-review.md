@@ -32,6 +32,14 @@ Junior agents follow specs literally. Your job is to ask:
 
 4. **Is this the right abstraction?** Junior agents build what's asked. You ensure it's built in a way that won't cause pain as the system grows.
 
+Then follow this with a standard review for:
+[] **Correctness**: Does the code do what it's supposed to?
+[] **Testing**: Is the code well tested with unit and integration tests that confirm the feature works and will not regress?
+[] **Edge cases**: Are error conditions handled?
+[] **Style**: Does it follow project conventions?
+[] **Performance**: Are there obvious inefficiencies?
+[] **Security**: Are security best-practices followed?
+
 ## When to Propose Spec/Task Changes
 
 If you discover:
