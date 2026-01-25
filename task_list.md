@@ -20,19 +20,6 @@
 
 ---
 
-### 2. [ ] Config parsing
-
-Implement config loading in shared library. Parse TOML per spec.md Section 4. Handle path expansion (`~`), validation, and defaults.
-
-**Acceptance criteria:**
-
-- Loads config from default path and `BACKUTIL_CONFIG` env var
-- Validates required fields, returns clear errors for invalid configs
-- Unit tests for: valid config, missing fields, path expansion, multi-source mode
-- `[BLOCKED BY: #1]`
-
----
-
 ### 3. [ ] Shared types and IPC messages
 
 Define all types from spec.md Sections 5-6 in shared library. Implement JSON serialization/deserialization.
@@ -399,3 +386,8 @@ Write user-facing README with installation, quick start, and configuration examp
 
 Branch: `feature/project-scaffold`
 Completed: 2026-01-24
+
+### 2. [x] Config parsing
+
+Branch: `feature/config-parsing`
+Completed: 2026-01-25

@@ -159,3 +159,36 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - Unblocks: Task #2 (Config parsing), Task #3 (Shared types), Task #5 (Daemon skeleton).
+
+---
+
+## [2026-01-25] 1783da7 — lib: add config parsing
+
+**What changed:**
+
+- Added `Config`, `BackupSet`, `RetentionPolicy` structs.
+- Implemented TOML parsing with validation.
+- Added `load_config()` with `BACKUTIL_CONFIG` env var support.
+- Implemented path expansion for `~`.
+- Added `tempfile` for testing.
+
+**Why:**
+
+- Implements Task #2 and FR4.
+- Essential foundation for daemon and CLI.
+
+**Files affected:**
+
+- crates/backutil-lib/src/config.rs (new)
+- crates/backutil-lib/src/lib.rs (updated)
+- crates/backutil-lib/Cargo.toml (updated)
+
+**Testing notes:**
+
+- Unit tests for validation (duplicates, mutually exclusive sources).
+- Unit tests for path expansion.
+- Integrated test for `load_config` with temporary files.
+
+**Dependencies/blockers:**
+
+- Unblocks: Task #6 (File watcher), Task #14 (CLI init).
