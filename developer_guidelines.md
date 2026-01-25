@@ -32,7 +32,7 @@ This document defines development practices, cleanup requirements, and coordinat
    └── Append a summary of changes to changelog.md (see Section 9)
 
 7. MARK COMPLETE
-   └── Mark the feature as complete in the task list
+   └── Mark the feature as complete and move to the end of the task list matching the format of other completed tasks.
 ```
 
 **Do not skip steps.** Reading the changelog before starting prevents duplicate work and conflicting implementations.
@@ -42,6 +42,7 @@ This document defines development practices, cleanup requirements, and coordinat
 Before completing any development or testing task, ensure the system is left in a clean state. Remove all installed artifacts:
 
 **Systemd units:**
+
 ```bash
 systemctl --user stop backutil-daemon.service
 systemctl --user disable backutil-daemon.service
@@ -50,6 +51,7 @@ systemctl --user daemon-reload
 ```
 
 **FUSE mounts (if any are active):**
+
 ```bash
 fusermount -u ~/.local/share/backutil/mnt/<set-name>
 # Or unmount all:
@@ -57,18 +59,21 @@ for mnt in ~/.local/share/backutil/mnt/*/; do fusermount -u "$mnt" 2>/dev/null; 
 ```
 
 **Config and data files:**
+
 ```bash
 rm -rf ~/.config/backutil          # Config + password file
 rm -rf ~/.local/share/backutil     # Logs + mount points
 ```
 
 **Runtime files:**
+
 ```bash
 rm -f ${XDG_RUNTIME_DIR:-/tmp}/backutil.sock
 rm -f ${XDG_RUNTIME_DIR:-/tmp}/backutil.pid
 ```
 
 **Installed binaries:**
+
 ```bash
 rm -f ~/.cargo/bin/backutil
 rm -f ~/.cargo/bin/backutil-daemon
@@ -77,28 +82,33 @@ rm -f ~/.cargo/bin/backutil-daemon
 ## 2. Coding Standards
 
 ### General
+
 - Follow Rust 2021 edition idioms
 - Run `cargo fmt` before committing
 - Run `cargo clippy` and address all warnings
 - All public functions must have doc comments
 
 ### Error Handling
+
 - Use `thiserror` for library error types, `anyhow` for application code
 - Never use `.unwrap()` or `.expect()` in library code; use proper error propagation
 - Panics are acceptable only for programmer errors (invariant violations), never for runtime conditions
 
 ### Testing
+
 - Unit tests go in the same file as the code (`#[cfg(test)]` module)
 - Integration tests go in `tests/` directory
 - Tests must not leave artifacts on the filesystem; use `tempfile` crate for temporary directories
 - Tests must not require `restic` to be installed unless marked `#[ignore]`
 
 ### Dependencies
+
 - Do not add new dependencies without justification
 - Prefer dependencies already in the workspace (see spec.md Section 2)
 - Security-sensitive code (password handling, file permissions) must not use additional crates without review
 
 ### Commits
+
 - One logical change per commit
 - Commit message format: `<component>: <short description>` (e.g., `daemon: add debounce timer`, `lib: fix config parsing for multi-source`)
 - Do not commit generated files, build artifacts, or test fixtures containing real paths
@@ -144,6 +154,7 @@ Security-sensitive files must have correct permissions:
 | Unix socket | `700` | Handled by runtime |
 
 When creating the password file programmatically:
+
 ```rust
 use std::os::unix::fs::OpenOptionsExt;
 std::fs::OpenOptions::new()

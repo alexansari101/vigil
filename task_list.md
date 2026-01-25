@@ -6,9 +6,9 @@
 2. **Claim a task:** Take the topmost `[ ]` task that is not blocked
 3. **Create a feature branch:** `git checkout -b feature/<task-short-name>`
 4. **Implement, test, verify** per `developer_guidelines.md` Section 0
-5. **Merge to main:** Only after all tests pass and regression testing is complete
-6. **Update this file:** Mark task `[x]` and note your branch name
-7. **Update changelog.md:** Add entry describing your changes
+5. **Update changelog.md:** Add entry describing your changes
+6. **Update this file:** Mark task `[x]` and note your branch name. Move to the end of the list matching the format of other completed tasks.
+7. **Merge to main:** Only after all tests pass and regression testing is complete and the pre-commit checklist has been completed per `developer_guidelines.md` Section 8.
 
 **Parallel work:** Multiple agents may work simultaneously on unblocked tasks. Communicate via changelog.md and commit messages. If you encounter a merge conflict, resolve it carefully and re-run all tests.
 
