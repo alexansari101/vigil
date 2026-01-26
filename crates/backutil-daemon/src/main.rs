@@ -216,6 +216,15 @@ async fn handle_client(
                     }
                 }
             }
+            Request::Snapshots { set_name, limit: _ } => {
+                match job_manager.get_snapshots(&set_name).await {
+                    Ok(snapshots) => Response::Ok(Some(ResponseData::Snapshots { snapshots })),
+                    Err(e) => Response::Error {
+                        code: "ResticError".into(),
+                        message: e.to_string(),
+                    },
+                }
+            }
             _ => Response::Error {
                 code: "NotImplemented".into(),
                 message: "Command not implemented yet".into(),

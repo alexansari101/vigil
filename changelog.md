@@ -489,3 +489,34 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - Unblocks: Task #10 (Daemon status and snapshots), Task #16 (CLI backup command).
+
+---
+
+## [2026-01-26] — daemon: implement status and snapshots IPC handlers
+
+**What changed:**
+
+- Implemented `get_snapshots` in `JobManager` to retrieve repository snapshots via `ResticExecutor`.
+- Added support for `Status` and `Snapshots` IPC requests in `handle_client`.
+- Fully integrated `SetStatus` reporting including job state, last backup, and mount status.
+- Handled error paths for unknown backup sets and restic execution failures in IPC responses.
+
+**Why:**
+
+- Implements Task #10 and FR1/FR2.
+- Essential for CLI and TUI components to display the current state and history of backup sets.
+
+**Files affected:**
+
+- [manager.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/manager.rs) (updated)
+- [main.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/main.rs) (updated)
+
+**Testing notes:**
+
+- Verified that `Ping`, `Status`, and `Snapshots` requests return correct JSON responses via Unix socket.
+- Verified error handling for unknown set names.
+- Regression tested existing backup orchestration and debounce logic.
+
+**Dependencies/blockers:**
+
+- Unblocks: Task #11 (Daemon IPC integration test), Task #12 (Daemon mount/unmount), Task #14 (CLI skeleton).

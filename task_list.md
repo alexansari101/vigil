@@ -26,21 +26,6 @@
 
 ---
 
----
-
-### 10. [ ] Daemon status and snapshots
-
-Implement `Status` and `Snapshots` IPC handlers. Return current state of all backup sets.
-
-**Acceptance criteria:**
-
-- `Status` returns list of SetStatus for all configured sets
-- `Snapshots` returns list of SnapshotInfo for specified set
-- Includes last backup result, current state, mount status
-- `[BLOCKED BY: #9]`
-
----
-
 ### 11. [ ] Daemon IPC integration test
 
 Create integration test that starts actual daemon, sends IPC commands via Unix socket, verifies responses and shutdown.
@@ -361,4 +346,9 @@ Completed: 2026-01-26
 ### 9. [x] Daemon backup orchestration
 
 Branch: `feature/daemon-orchestration`
+Completed: 2026-01-26
+
+### 10. [x] Daemon status and snapshots
+
+Branch: `feature/daemon-status-snapshots`
 Completed: 2026-01-26

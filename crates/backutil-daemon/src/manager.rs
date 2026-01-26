@@ -1,7 +1,7 @@
 use crate::executor::ResticExecutor;
 use anyhow::Result;
 use backutil_lib::config::{BackupSet, Config};
-use backutil_lib::types::{BackupResult, JobState, SetStatus};
+use backutil_lib::types::{BackupResult, JobState, SetStatus, SnapshotInfo};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -303,6 +303,15 @@ impl JobManager {
                 is_mounted: job.is_mounted,
             })
             .collect()
+    }
+
+    pub async fn get_snapshots(&self, set_name: &str) -> Result<Vec<SnapshotInfo>> {
+        let jobs = self.jobs.lock().await;
+        if let Some(job) = jobs.get(set_name) {
+            self.executor.snapshots(&job.set.target).await
+        } else {
+            anyhow::bail!("Unknown backup set: {}", set_name)
+        }
     }
 }
 
