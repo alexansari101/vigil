@@ -30,19 +30,6 @@
 
 ## Phase 3: CLI
 
-### 14. [ ] CLI skeleton and status command
-
-Create CLI binary with clap. Implement `backutil status` command that connects to daemon and displays set status.
-
-**Acceptance criteria:**
-
-- `backutil status` shows all sets with state, last backup time, mount status
-- Human-readable output (e.g., "5 min ago" not timestamps)
-- Exits with code 3 if daemon not running
-- `[BLOCKED BY: #10]`
-
----
-
 ### 15. [ ] CLI init command
 
 Implement `backutil init [SET]` to initialize restic repository.
@@ -327,4 +314,9 @@ Completed: 2026-01-26
 ### 13. [x] Daemon prune
 
 Branch: `feature/daemon-prune`
+Completed: 2026-01-26
+
+### 14. [x] CLI skeleton and status command
+
+Branch: `feature/cli-skeleton-status`
 Completed: 2026-01-26

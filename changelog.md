@@ -8,6 +8,37 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — cli: implement skeleton and status command
+
+**What changed:**
+
+- Implemented `backutil` CLI using `clap` with subcommands for all Phase 3 and 5 actions.
+- Implemented IPC client with Unix socket connection and newline-delimited JSON protocol.
+- Implemented `status` command with human-readable formatting and daemon-running check (exit code 3).
+- Added duration formatting for "Last Backup" (e.g., "5 min ago").
+
+**Why:**
+
+- Implements Task #14 and provides the entry point for all CLI interactions.
+- Enables monitoring of backup set health as required by FR3.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (updated)
+- crates/backutil/Cargo.toml (updated)
+
+**Testing notes:**
+
+- Verified `backutil status` exits with code 3 when daemon is not running.
+- Verified `backutil status` displays correct set information when daemon is running with mock config.
+- Verified human-readable duration formatting.
+
+**Dependencies/blockers:**
+
+- Unblocks: All other CLI commands (Tasks #15-#21) and TUI (Task #22).
+
+---
+
 ## [2026-01-26] — review: fix global retention fallback for prune command
 
 **What changed:**
