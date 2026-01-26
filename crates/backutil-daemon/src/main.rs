@@ -198,12 +198,21 @@ async fn handle_client(
                     None => {
                         // Backup all sets
                         let statuses = job_manager.get_status().await;
+                        let mut started = Vec::new();
+                        let mut failed = Vec::new();
                         for status in statuses {
-                            if let Err(e) = job_manager.trigger_backup(&status.name).await {
-                                warn!("Failed to trigger backup for set {}: {}", status.name, e);
+                            match job_manager.trigger_backup(&status.name).await {
+                                Ok(_) => started.push(status.name),
+                                Err(e) => {
+                                    warn!(
+                                        "Failed to trigger backup for set {}: {}",
+                                        status.name, e
+                                    );
+                                    failed.push((status.name, e.to_string()));
+                                }
                             }
                         }
-                        Response::Ok(None)
+                        Response::Ok(Some(ResponseData::BackupsTriggered { started, failed }))
                     }
                 }
             }

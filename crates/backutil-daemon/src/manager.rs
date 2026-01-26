@@ -102,7 +102,6 @@ impl JobManager {
                     );
                 }
                 JobState::Idle | JobState::Error => {
-                    job.immediate_trigger = true;
                     job.state = JobState::Running; // Set to running immediately to prevent debounce start
                     info!("Immediate backup triggered for set {}", set_name);
 

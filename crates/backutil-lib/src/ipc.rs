@@ -51,6 +51,11 @@ pub enum ResponseData {
     Snapshots { snapshots: Vec<SnapshotInfo> },
     /// Confirmation that a backup set has started backing up.
     BackupStarted { set_name: String },
+    /// Result of triggering backups for multiple sets.
+    BackupsTriggered {
+        started: Vec<String>,
+        failed: Vec<(String, String)>, // (set_name, error_message)
+    },
     /// Confirmation that a backup operation has completed.
     BackupComplete {
         set_name: String,
