@@ -160,10 +160,15 @@ fn display_status(sets: Vec<SetStatus>) {
         };
 
         let last_backup_str = match set.last_backup {
-            Some(result) => {
+            Some(ref result) => {
                 let now = Utc::now();
                 let duration = now.signed_duration_since(result.timestamp);
-                format_human_duration(duration)
+                let time_str = format_human_duration(duration);
+                if result.success {
+                    time_str
+                } else {
+                    format!("{} (failed)", time_str)
+                }
             }
             None => "Never".to_string(),
         };
@@ -177,15 +182,91 @@ fn display_status(sets: Vec<SetStatus>) {
     }
 }
 
+/// Formats a chrono Duration into a human-readable relative time string.
+/// Handles negative durations gracefully by showing "just now".
 fn format_human_duration(duration: Duration) -> String {
     let secs = duration.num_seconds();
+    if secs < 0 {
+        return "just now".to_string();
+    }
     if secs < 60 {
         format!("{}s ago", secs)
     } else if secs < 3600 {
-        format!("{} min ago", secs / 60)
+        let mins = secs / 60;
+        if mins == 1 {
+            "1 min ago".to_string()
+        } else {
+            format!("{} mins ago", mins)
+        }
     } else if secs < 86400 {
-        format!("{} hours ago", secs / 3600)
+        let hours = secs / 3600;
+        if hours == 1 {
+            "1 hour ago".to_string()
+        } else {
+            format!("{} hours ago", hours)
+        }
     } else {
-        format!("{} days ago", secs / 86400)
+        let days = secs / 86400;
+        if days == 1 {
+            "1 day ago".to_string()
+        } else {
+            format!("{} days ago", days)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_human_duration_seconds() {
+        assert_eq!(format_human_duration(Duration::seconds(0)), "0s ago");
+        assert_eq!(format_human_duration(Duration::seconds(30)), "30s ago");
+        assert_eq!(format_human_duration(Duration::seconds(59)), "59s ago");
+    }
+
+    #[test]
+    fn test_format_human_duration_minutes() {
+        assert_eq!(format_human_duration(Duration::seconds(60)), "1 min ago");
+        assert_eq!(format_human_duration(Duration::seconds(61)), "1 min ago");
+        assert_eq!(format_human_duration(Duration::seconds(120)), "2 mins ago");
+        assert_eq!(
+            format_human_duration(Duration::seconds(3599)),
+            "59 mins ago"
+        );
+    }
+
+    #[test]
+    fn test_format_human_duration_hours() {
+        assert_eq!(format_human_duration(Duration::seconds(3600)), "1 hour ago");
+        assert_eq!(
+            format_human_duration(Duration::seconds(7200)),
+            "2 hours ago"
+        );
+        assert_eq!(
+            format_human_duration(Duration::seconds(86399)),
+            "23 hours ago"
+        );
+    }
+
+    #[test]
+    fn test_format_human_duration_days() {
+        assert_eq!(format_human_duration(Duration::seconds(86400)), "1 day ago");
+        assert_eq!(
+            format_human_duration(Duration::seconds(172800)),
+            "2 days ago"
+        );
+        assert_eq!(
+            format_human_duration(Duration::seconds(604800)),
+            "7 days ago"
+        );
+    }
+
+    #[test]
+    fn test_format_human_duration_negative() {
+        // Edge case: negative durations (clock skew) should show "just now"
+        assert_eq!(format_human_duration(Duration::seconds(-1)), "just now");
+        assert_eq!(format_human_duration(Duration::seconds(-3600)), "just now");
     }
 }

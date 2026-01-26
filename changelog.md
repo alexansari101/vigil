@@ -8,6 +8,34 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — review: fix duration formatting and add unit tests
+
+**What changed:**
+
+- Fixed grammar for duration display (singular/plural).
+- Added handling for negative durations ("just now").
+- Added "(failed)" indicator for failed backups in status display.
+- Added comprehensive unit tests for `format_human_duration`.
+
+**Why:**
+
+- Improve user experience and fix edge cases identified during senior code review of Task #14.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (updated)
+
+**Testing notes:**
+
+- Verified with new unit tests covering seconds, minutes, hours, days, and negative durations.
+- Ran full workspace test suite.
+
+**Dependencies/blockers:**
+
+- None.
+
+---
+
 ## [2026-01-26] — cli: implement skeleton and status command
 
 **What changed:**
