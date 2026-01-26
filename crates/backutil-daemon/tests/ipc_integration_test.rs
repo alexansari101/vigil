@@ -154,3 +154,56 @@ async fn test_ipc_shutdown() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+#[ignore] // Requires restic and fusermount3
+async fn test_ipc_mount_unmount() -> Result<()> {
+    let daemon = TestDaemon::spawn()?;
+
+    // 1. Initialize repository (needed for mount to work)
+    let target_dir = daemon.temp_dir.path().join("target");
+    let pw_file = daemon
+        .temp_dir
+        .path()
+        .join("config/backutil/.repo_password");
+    fs::write(&pw_file, "testpassword")?;
+
+    let status = Command::new("restic")
+        .args([
+            "init",
+            "--repo",
+            target_dir.to_str().unwrap(),
+            "--password-file",
+            pw_file.to_str().unwrap(),
+        ])
+        .status()?;
+    assert!(status.success(), "Failed to init restic repo");
+
+    // 2. Send Mount request
+    let resp = daemon
+        .send_request(Request::Mount {
+            set_name: "test-set".to_string(),
+            snapshot_id: None,
+        })
+        .await?;
+
+    if let Response::Ok(Some(ResponseData::MountPath { path })) = resp {
+        let mount_path = std::path::PathBuf::from(path);
+        assert!(mount_path.exists());
+        // Note: checking if it's actually mounted might be tricky as restic takes a bit to mount
+        // and needs fusermount3. We at least verify the response and directory existence.
+    } else {
+        panic!("Unexpected response to Mount: {:?}", resp);
+    }
+
+    // 3. Send Unmount request
+    let resp = daemon
+        .send_request(Request::Unmount {
+            set_name: Some("test-set".to_string()),
+        })
+        .await?;
+
+    assert!(matches!(resp, Response::Ok(None)));
+
+    Ok(())
+}

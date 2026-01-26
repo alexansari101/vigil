@@ -225,9 +225,30 @@ async fn handle_client(
                     },
                 }
             }
-            _ => Response::Error {
+            Request::Mount {
+                set_name,
+                snapshot_id,
+            } => match job_manager.mount(&set_name, snapshot_id).await {
+                Ok(path) => Response::Ok(Some(ResponseData::MountPath {
+                    path: path.to_string_lossy().to_string(),
+                })),
+                Err(e) => Response::Error {
+                    code: "MountFailed".into(),
+                    message: e.to_string(),
+                },
+            },
+            Request::Unmount { set_name } => match job_manager.unmount(set_name).await {
+                Ok(_) => Response::Ok(None),
+                Err(e) => Response::Error {
+                    code: "ResticError".into(),
+                    message: e.to_string(),
+                },
+            },
+            Request::Prune {
+                set_name: _set_name,
+            } => Response::Error {
                 code: "NotImplemented".into(),
-                message: "Command not implemented yet".into(),
+                message: "Prune not implemented yet".into(),
             },
         };
 

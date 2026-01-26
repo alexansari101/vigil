@@ -3,6 +3,7 @@ use anyhow::Result;
 use backutil_lib::config::{BackupSet, Config};
 use backutil_lib::types::{BackupResult, JobState, SetStatus, SnapshotInfo};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, Instant};
@@ -20,6 +21,7 @@ struct Job {
     last_backup: Option<BackupResult>,
     is_mounted: bool,
     immediate_trigger: bool,
+    mount_process: Option<tokio::process::Child>,
 }
 
 impl JobManager {
@@ -35,6 +37,7 @@ impl JobManager {
                     last_backup: None,
                     is_mounted: false,
                     immediate_trigger: false,
+                    mount_process: None,
                 },
             );
         }
@@ -315,6 +318,61 @@ impl JobManager {
             self.executor.snapshots(&job.set.target, limit).await
         } else {
             anyhow::bail!("Unknown backup set: {}", set_name)
+        }
+    }
+
+    pub async fn mount(&self, set_name: &str, snapshot_id: Option<String>) -> Result<PathBuf> {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(job) = jobs.get_mut(set_name) {
+            if job.is_mounted {
+                return Ok(backutil_lib::paths::mount_path(set_name));
+            }
+
+            let mount_path = backutil_lib::paths::mount_path(set_name);
+            if !mount_path.exists() {
+                std::fs::create_dir_all(&mount_path)?;
+            }
+
+            info!("Mounting set {} at {:?}", set_name, mount_path);
+            let child = self
+                .executor
+                .mount(&job.set.target, snapshot_id.as_deref(), &mount_path)
+                .await?;
+
+            job.mount_process = Some(child);
+            job.is_mounted = true;
+
+            Ok(mount_path)
+        } else {
+            anyhow::bail!("Unknown backup set: {}", set_name)
+        }
+    }
+
+    pub async fn unmount(&self, set_name: Option<String>) -> Result<()> {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(name) = set_name {
+            if let Some(job) = jobs.get_mut(&name) {
+                if let Some(mut child) = job.mount_process.take() {
+                    info!("Unmounting set {}", name);
+                    child.kill().await?;
+                    job.is_mounted = false;
+                }
+                Ok(())
+            } else {
+                anyhow::bail!("Unknown backup set: {}", name)
+            }
+        } else {
+            info!("Unmounting all sets");
+            for (name, job) in jobs.iter_mut() {
+                if let Some(mut child) = job.mount_process.take() {
+                    info!("Unmounting set {}", name);
+                    if let Err(e) = child.kill().await {
+                        error!("Failed to kill mount process for set {}: {}", name, e);
+                    }
+                    job.is_mounted = false;
+                }
+            }
+            Ok(())
         }
     }
 }

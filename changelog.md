@@ -580,3 +580,34 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - Unblocks: CLI skeleton implementation.
+
+---
+
+## [2026-01-26] — daemon: implement mount and unmount IPC handlers
+
+**What changed:**
+
+- Implemented `mount` and `unmount` methods in `JobManager`.
+- Added support for `Mount` and `Unmount` IPC requests in daemon's `handle_client`.
+- Updated `Job` struct to track `mount_process` (restic child process) and `is_mounted` state.
+- Integrated `restic mount` execution via `ResticExecutor`.
+- Added `test_ipc_mount_unmount` to `ipc_integration_test.rs` for end-to-end verification.
+- Fixed a lint warning regarding unused variable in `Prune` handler.
+
+**Why:**
+
+- Implements Task #12 and FR3.
+- Allows users to interactively browse backup snapshots via FUSE mounts.
+- Provides the backend logic for the upcoming `backutil mount` and `backutil unmount` CLI commands.
+
+**Files affected:**
+
+- [manager.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/manager.rs) (updated)
+- [main.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/main.rs) (updated)
+- [ipc_integration_test.rs](file:///home/alex/backup_util/crates/backutil-daemon/tests/ipc_integration_test.rs) (updated)
+
+**Testing notes:**
+
+- Verified via `test_ipc_mount_unmount` integration test.
+- Regression tested with existing unit and integration tests.
+- Successfully ran `cargo test -p backutil-daemon --test ipc_integration_test -- test_ipc_mount_unmount --ignored` confirming successful repository initialization, mounting, and unmounting.

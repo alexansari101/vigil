@@ -28,17 +28,6 @@
 
 ---
 
-### 12. [ ] Daemon mount/unmount
-
-Implement `Mount` and `Unmount` IPC handlers. Spawn restic mount process, track mount state.
-
-**Acceptance criteria:**
-
-- `Mount` starts restic mount in background, returns mount path
-- `Unmount` kills restic mount process cleanly
-- Mount status tracked and returned by `Status` handler
-- `[BLOCKED BY: #8, #10]`
-
 ---
 
 ### 13. [ ] Daemon prune
@@ -343,4 +332,9 @@ Completed: 2026-01-26
 ### 11. [x] Daemon IPC integration test
 
 Branch: `feature/daemon-ipc-integration-test`
+Completed: 2026-01-26
+
+### 12. [x] Daemon mount/unmount
+
+Branch: `feature/daemon-mount-unmount`
 Completed: 2026-01-26
