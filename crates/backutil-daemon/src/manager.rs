@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, Instant};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, Job>>>,
@@ -284,9 +284,39 @@ impl JobManager {
     }
 
     pub async fn get_status(&self) -> Vec<SetStatus> {
-        let jobs = self.jobs.lock().await;
-        jobs.values()
-            .map(|job| SetStatus {
+        let mut jobs = self.jobs.lock().await;
+
+        let mut statuses = Vec::new();
+        for job in jobs.values_mut() {
+            // Monitor mount process
+            if job.is_mounted {
+                if let Some(ref mut child) = job.mount_process {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            warn!(
+                                "Mount process for set {} exited unexpectedly with status: {}",
+                                job.set.name, status
+                            );
+                            job.is_mounted = false;
+                            job.mount_process = None;
+                        }
+                        Ok(None) => {
+                            // Still running
+                        }
+                        Err(e) => {
+                            error!(
+                                "Error checking mount process for set {}: {}",
+                                job.set.name, e
+                            );
+                        }
+                    }
+                } else {
+                    // Should not happen if is_mounted is true
+                    job.is_mounted = false;
+                }
+            }
+
+            statuses.push(SetStatus {
                 name: job.set.name.clone(),
                 state: job.state.clone(),
                 last_backup: job.last_backup.clone(),
@@ -304,8 +334,9 @@ impl JobManager {
                 },
                 target: job.set.target.clone().into(),
                 is_mounted: job.is_mounted,
-            })
-            .collect()
+            });
+        }
+        statuses
     }
 
     pub async fn get_snapshots(
@@ -352,11 +383,7 @@ impl JobManager {
         let mut jobs = self.jobs.lock().await;
         if let Some(name) = set_name {
             if let Some(job) = jobs.get_mut(&name) {
-                if let Some(mut child) = job.mount_process.take() {
-                    info!("Unmounting set {}", name);
-                    child.kill().await?;
-                    job.is_mounted = false;
-                }
+                Self::perform_unmount(&name, job).await?;
                 Ok(())
             } else {
                 anyhow::bail!("Unknown backup set: {}", name)
@@ -364,16 +391,62 @@ impl JobManager {
         } else {
             info!("Unmounting all sets");
             for (name, job) in jobs.iter_mut() {
-                if let Some(mut child) = job.mount_process.take() {
-                    info!("Unmounting set {}", name);
-                    if let Err(e) = child.kill().await {
-                        error!("Failed to kill mount process for set {}: {}", name, e);
-                    }
-                    job.is_mounted = false;
+                if let Err(e) = Self::perform_unmount(name, job).await {
+                    error!("Failed to unmount set {}: {}", name, e);
                 }
             }
             Ok(())
         }
+    }
+
+    async fn perform_unmount(name: &str, job: &mut Job) -> Result<()> {
+        if !job.is_mounted {
+            return Ok(());
+        }
+
+        info!("Unmounting set {}", name);
+        let mount_path = backutil_lib::paths::mount_path(name);
+
+        // 1. Try fusermount3 -u
+        let child = tokio::process::Command::new("fusermount3")
+            .arg("-u")
+            .arg(&mount_path)
+            .spawn();
+
+        let success = match child {
+            Ok(mut c) => {
+                let status = c.wait().await?;
+                status.success()
+            }
+            Err(_) => false, // fusermount3 not found or failed to spawn
+        };
+
+        if !success {
+            debug!(
+                "fusermount3 failed or not found, killing restic process for {}",
+                name
+            );
+            if let Some(mut child) = job.mount_process.take() {
+                let _ = child.kill().await;
+            }
+        } else {
+            // Even if fusermount3 succeeded, we should clean up the restic process
+            if let Some(mut child) = job.mount_process.take() {
+                // Restic should exit on its own when unmounted, but we'll wait a bit then kill if needed
+                match tokio::time::timeout(Duration::from_secs(2), child.wait()).await {
+                    Ok(_) => debug!("Restic mount process for {} exited cleanly", name),
+                    Err(_) => {
+                        debug!("Restic mount process for {} did not exit, killing", name);
+                        let _ = child.kill().await;
+                    }
+                }
+            }
+        }
+
+        job.is_mounted = false;
+        job.mount_process = None;
+
+        Ok(())
     }
 }
 

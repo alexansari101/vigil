@@ -143,6 +143,11 @@ impl Daemon {
             }
         }
 
+        // Cleanup any active mounts on shutdown
+        if let Err(e) = self.job_manager.unmount(None).await {
+            error!("Error unmounting sets on shutdown: {}", e);
+        }
+
         Ok(())
     }
 }

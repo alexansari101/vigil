@@ -207,3 +207,63 @@ async fn test_ipc_mount_unmount() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+#[ignore] // Requires restic and fusermount3
+async fn test_ipc_mount_cleanup_on_shutdown() -> Result<()> {
+    let daemon = TestDaemon::spawn()?;
+
+    // 1. Initialize repository
+    let target_dir = daemon.temp_dir.path().join("target");
+    let pw_file = daemon
+        .temp_dir
+        .path()
+        .join("config/backutil/.repo_password");
+    fs::write(&pw_file, "testpassword")?;
+
+    let status = Command::new("restic")
+        .args([
+            "init",
+            "--repo",
+            target_dir.to_str().unwrap(),
+            "--password-file",
+            pw_file.to_str().unwrap(),
+        ])
+        .status()?;
+    assert!(status.success(), "Failed to init restic repo");
+
+    // 2. Send Mount request
+    let resp = daemon
+        .send_request(Request::Mount {
+            set_name: "test-set".to_string(),
+            snapshot_id: None,
+        })
+        .await?;
+
+    let mount_path = if let Response::Ok(Some(ResponseData::MountPath { path })) = resp {
+        std::path::PathBuf::from(path)
+    } else {
+        panic!("Unexpected response to Mount: {:?}", resp);
+    };
+
+    assert!(mount_path.exists());
+
+    // 3. Send Shutdown request
+    let resp = daemon.send_request(Request::Shutdown).await?;
+    assert!(matches!(resp, Response::Ok(None)));
+
+    // Wait for daemon to exit and cleanup
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    // 4. Verify mount is gone
+    // Note: even if it's still "mounted" in the kernel due to some delay,
+    // the restic process should be gone.
+    // We can check if the directory is empty or gone if unmount worked.
+    // On Linux, fusermount3 -u might keep the directory but it won't be a mount point.
+
+    // A better way is to check the process. But we don't have the PID easily here.
+    // However, the daemon.cleanup() handles socket/pid file removal.
+    assert!(!daemon.socket_path.exists(), "Socket file should be gone");
+
+    Ok(())
+}

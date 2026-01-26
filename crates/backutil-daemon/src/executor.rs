@@ -7,6 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::process::{Child, Command};
 use tracing::{debug, error, info};
 
@@ -258,7 +259,20 @@ impl ResticExecutor {
         let mut cmd = Command::new("restic");
         cmd.args(&args).stdout(Stdio::null()).stderr(Stdio::piped());
 
-        let child = cmd.spawn().context("Failed to spawn restic mount")?;
-        Ok(child)
+        let mut child = cmd.spawn().context("Failed to spawn restic mount")?;
+
+        // Give it a moment to see if it fails immediately (e.g. bad snapshot ID or mount point busy)
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        match child.try_wait() {
+            Ok(Some(status)) if !status.success() => {
+                let mut stderr = String::new();
+                if let Some(mut reader) = child.stderr.take() {
+                    use tokio::io::AsyncReadExt;
+                    let _ = reader.read_to_string(&mut stderr).await;
+                }
+                anyhow::bail!("Restic mount failed: {}", stderr);
+            }
+            _ => Ok(child),
+        }
     }
 }
