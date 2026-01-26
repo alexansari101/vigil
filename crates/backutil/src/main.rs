@@ -227,6 +227,22 @@ async fn handle_backup(set_name: Option<String>) -> anyhow::Result<()> {
                         }
                     }
                 }
+                ResponseData::BackupFailed {
+                    set_name: failed_set,
+                    error,
+                } => {
+                    eprintln!("Backup failed for set '{}': {}", failed_set, error);
+                    completed_count += 1;
+                    if let Some(expected) = expected_completions {
+                        if completed_count >= expected {
+                            break;
+                        }
+                    } else if let Some(target) = &set_name {
+                        if target == &failed_set {
+                            break;
+                        }
+                    }
+                }
                 _ => {}
             },
             Response::Ok(None) => {}

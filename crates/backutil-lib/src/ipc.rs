@@ -63,6 +63,8 @@ pub enum ResponseData {
         added_bytes: u64,
         duration_secs: f64,
     },
+    /// Notification that a backup operation failed.
+    BackupFailed { set_name: String, error: String },
     /// The local path where a snapshot was mounted.
     MountPath { path: String },
     /// Result of a prune operation for a single set.

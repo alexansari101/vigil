@@ -260,6 +260,12 @@ impl JobManager {
                                 ))
                                 .icon("dialog-error")
                                 .show();
+
+                            // Broadcast failure event
+                            let _ = event_tx.send(Response::Ok(Some(ResponseData::BackupFailed {
+                                set_name: set_name.clone(),
+                                error: err_msg,
+                            })));
                             break;
                         }
 
@@ -305,6 +311,13 @@ impl JobManager {
                     if let Some(job) = jobs_lock.get_mut(&set_name) {
                         job.state = JobState::Error;
                     }
+
+                    // Broadcast failure event
+                    let _ = event_tx.send(Response::Ok(Some(ResponseData::BackupFailed {
+                        set_name: set_name.clone(),
+                        error: err_msg,
+                    })));
+
                     break;
                 }
             }

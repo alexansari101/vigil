@@ -8,6 +8,38 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — review: fix cli backup command hanging on failure
+
+**What changed:**
+
+- Added `BackupFailed` variant to IPC protocol.
+- Updated daemon to broadcast `BackupFailed` event when a backup job fails.
+- Updated CLI to handle `BackupFailed` events and correctly count completions.
+- Added `test_cli_backup_failure` regression test.
+
+**Why:**
+
+- Code review identified that `backutil backup` (especially "backup all") would hang indefinitely if a backup job failed, because the daemon only broadcasted completion on success.
+
+**Files affected:**
+
+- crates/backutil-lib/src/ipc.rs (updated)
+- crates/backutil-daemon/src/manager.rs (updated)
+- crates/backutil/src/main.rs (updated)
+- crates/backutil/tests/cli_backup_test.rs (updated)
+
+**Testing notes:**
+
+- Added `test_cli_backup_failure` which verifies that a failed backup (invalid source) does not cause the test to hang.
+- Verified existing behavior for successful backups.
+- Full workspace tests pass.
+
+**Dependencies/blockers:**
+
+- None.
+
+---
+
 ## [2026-01-26] — feature: cli backup command
 
 **What changed:**

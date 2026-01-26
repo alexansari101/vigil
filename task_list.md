@@ -309,4 +309,4 @@ Completed: 2026-01-26
 
 Branch: `feature/cli-backup`
 Completed: 2026-01-26
-
+Review Fixes: 2026-01-26 (Fix CLI hang on backup failure)
