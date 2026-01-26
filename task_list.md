@@ -24,10 +24,6 @@
 
 ## Phase 2: Daemon Core
 
----
-
----
-
 ### 8. [ ] Restic executor
 
 Implement restic command execution. Support: init, backup, forget/prune, snapshots (JSON), mount.
@@ -72,21 +68,35 @@ Implement `Status` and `Snapshots` IPC handlers. Return current state of all bac
 
 ---
 
-### 11. [ ] Daemon mount/unmount
+### 11. [ ] Daemon IPC integration test
+
+Create integration test that starts actual daemon, sends IPC commands via Unix socket, verifies responses and shutdown.
+
+**Acceptance criteria:**
+
+- Test spawns daemon as subprocess with temp config
+- Sends IPC requests over Unix socket (Ping, Status, Shutdown)
+- Verifies correct responses and deserialization
+- Tests daemon graceful shutdown
+- Cleans up daemon process and temp files on test completion
+- `[BLOCKED BY: #10]`
+
+---
+
+### 12. [ ] Daemon mount/unmount
 
 Implement `Mount` and `Unmount` IPC handlers. Spawn restic mount process, track mount state.
 
 **Acceptance criteria:**
 
 - `Mount` starts restic mount in background, returns mount path
-- `Unmount` kills mount process, cleans up
-- Tracks which sets are currently mounted
-- Handles "already mounted" and "not mounted" cases
+- `Unmount` kills restic mount process cleanly
+- Mount status tracked and returned by `Status` handler
 - `[BLOCKED BY: #8, #10]`
 
 ---
 
-### 12. [ ] Daemon prune
+### 13. [ ] Daemon prune
 
 Implement `Prune` IPC handler. Run retention policy cleanup.
 
@@ -101,7 +111,7 @@ Implement `Prune` IPC handler. Run retention policy cleanup.
 
 ## Phase 3: CLI
 
-### 13. [ ] CLI skeleton and status command
+### 14. [ ] CLI skeleton and status command
 
 Create CLI binary with clap. Implement `backutil status` command that connects to daemon and displays set status.
 
@@ -114,7 +124,7 @@ Create CLI binary with clap. Implement `backutil status` command that connects t
 
 ---
 
-### 14. [ ] CLI init command
+### 15. [ ] CLI init command
 
 Implement `backutil init [SET]` to initialize restic repository.
 
@@ -124,11 +134,11 @@ Implement `backutil init [SET]` to initialize restic repository.
 - Creates password file with mode 600
 - Runs `restic init` for specified set or all sets
 - Clear error if repository already initialized
-- `[BLOCKED BY: #8, #13]`
+- `[BLOCKED BY: #8, #14]`
 
 ---
 
-### 15. [ ] CLI backup command
+### 16. [ ] CLI backup command
 
 Implement `backutil backup [SET]` to trigger immediate backup via daemon.
 
@@ -137,11 +147,11 @@ Implement `backutil backup [SET]` to trigger immediate backup via daemon.
 - Sends `Backup` request to daemon
 - Shows progress/completion message
 - Exits with code 4 on restic error
-- `[BLOCKED BY: #9, #13]`
+- `[BLOCKED BY: #9, #14]`
 
 ---
 
-### 16. [ ] CLI mount/unmount commands
+### 17. [ ] CLI mount/unmount commands
 
 Implement `backutil mount <SET>` and `backutil unmount [SET]`.
 
@@ -151,11 +161,11 @@ Implement `backutil mount <SET>` and `backutil unmount [SET]`.
 - Prints mount path on success
 - `unmount` with no args unmounts all
 - Clear error messages for edge cases
-- `[BLOCKED BY: #11, #13]`
+- `[BLOCKED BY: #12, #14]`
 
 ---
 
-### 17. [ ] CLI prune command
+### 18. [ ] CLI prune command
 
 Implement `backutil prune [SET]`.
 
@@ -163,11 +173,11 @@ Implement `backutil prune [SET]`.
 
 - Triggers prune via daemon
 - Shows summary of space reclaimed
-- `[BLOCKED BY: #12, #13]`
+- `[BLOCKED BY: #13, #14]`
 
 ---
 
-### 18. [ ] CLI logs command
+### 19. [ ] CLI logs command
 
 Implement `backutil logs` to tail the log file.
 
@@ -176,11 +186,11 @@ Implement `backutil logs` to tail the log file.
 - Tails `~/.local/share/backutil/backutil.log`
 - Supports `-f` for follow mode
 - Graceful handling if log doesn't exist
-- `[BLOCKED BY: #4, #13]`
+- `[BLOCKED BY: #4, #14]`
 
 ---
 
-### 19. [ ] CLI bootstrap command
+### 20. [ ] CLI bootstrap command
 
 Implement `backutil bootstrap` to generate and enable systemd user unit.
 
@@ -190,11 +200,11 @@ Implement `backutil bootstrap` to generate and enable systemd user unit.
 - Runs `systemctl --user daemon-reload`
 - Enables and starts the service
 - Checks for missing dependencies (restic, fusermount3, notify-send)
-- `[BLOCKED BY: #13]`
+- `[BLOCKED BY: #14]`
 
 ---
 
-### 20. [ ] CLI disable/uninstall commands
+### 21. [ ] CLI disable/uninstall commands
 
 Implement `backutil disable` and `backutil uninstall [--purge]`.
 
@@ -204,13 +214,13 @@ Implement `backutil disable` and `backutil uninstall [--purge]`.
 - `uninstall` removes systemd unit
 - `uninstall --purge` also removes config, logs, password file
 - Warns if mounts are active
-- `[BLOCKED BY: #19]`
+- `[BLOCKED BY: #20]`
 
 ---
 
 ## Phase 4: TUI
 
-### 21. [ ] TUI basic layout
+### 22. [ ] TUI basic layout
 
 Implement TUI with ratatui per spec.md Section 11. Header, job list, footer with keybindings.
 
@@ -220,11 +230,11 @@ Implement TUI with ratatui per spec.md Section 11. Header, job list, footer with
 - Renders list of backup sets with basic info
 - Renders footer with keybinding hints
 - Keyboard: `q` quits
-- `[BLOCKED BY: #13]`
+- `[BLOCKED BY: #14]`
 
 ---
 
-### 22. [ ] TUI live status updates
+### 23. [ ] TUI live status updates
 
 Poll daemon for status, update display. Show job state, debounce countdown, last backup time.
 
@@ -234,11 +244,11 @@ Poll daemon for status, update display. Show job state, debounce countdown, last
 - Shows state indicators (Idle/Debouncing/Running/Error)
 - Shows debounce countdown when applicable
 - Shows "Last: X ago" with human-readable time
-- `[BLOCKED BY: #10, #21]`
+- `[BLOCKED BY: #10, #22]`
 
 ---
 
-### 23. [ ] TUI sparklines
+### 24. [ ] TUI sparklines
 
 Add sparkline visualization of recent backup durations.
 
@@ -247,11 +257,11 @@ Add sparkline visualization of recent backup durations.
 - Shows last 5 backup durations as sparkline
 - Scales appropriately
 - Handles sets with <5 backups gracefully
-- `[BLOCKED BY: #22]`
+- `[BLOCKED BY: #23]`
 
 ---
 
-### 24. [ ] TUI interactive commands
+### 25. [ ] TUI interactive commands
 
 Implement keybindings: `b` backup all, `p` prune, `m` mount, `s` snapshots, `?` help modal.
 
@@ -261,13 +271,13 @@ Implement keybindings: `b` backup all, `p` prune, `m` mount, `s` snapshots, `?` 
 - Non-blocking: TUI remains responsive during operations
 - `?` shows overlay modal with command list
 - Warn on quit if mounts are active
-- `[BLOCKED BY: #22]`
+- `[BLOCKED BY: #23]`
 
 ---
 
 ## Phase 5: Polish
 
-### 25. [ ] Error message improvements
+### 26. [ ] Error message improvements
 
 Review all error paths. Ensure user-facing errors include what/why/how-to-fix per spec.md Section 10.
 
@@ -276,24 +286,37 @@ Review all error paths. Ensure user-facing errors include what/why/how-to-fix pe
 - Audit CLI and TUI error output
 - No raw error messages shown to users
 - Actionable suggestions for common errors
-- `[BLOCKED BY: #24]`
+- `[BLOCKED BY: #25]`
 
 ---
 
-### 26. [ ] Logging and observability
+### 27. [ ] Logging and observability
 
 Ensure daemon logs all significant events. Implement log rotation or size limits.
 
 **Acceptance criteria:**
 
-- Logs backup start/complete/fail with set name
-- Logs file watch events at debug level
-- Log file doesn't grow unbounded
-- `[BLOCKED BY: #9]`
+- All significant events logged (backup start/complete, state changes)
+- Logs rotated or size-limited to prevent unbounded growth
+- Graceful shutdown cancels in-flight worker tasks (debounce/backup)
+- `[BLOCKED BY: #1-#25]`
 
 ---
 
-### 27. [ ] End-to-end integration tests
+### 28. [ ] Polish and final testing
+
+Performance audit, documentation review, and final integration checks.
+
+**Acceptance criteria:**
+
+- Complete manual run of all CLI commands
+- Verify TUI remains smooth under high log volume
+- Audit code for any remaining TODOs or placeholders
+- `[BLOCKED BY: #27]`
+
+---
+
+### 29. [ ] End-to-end integration tests
 
 Create integration test suite that exercises full workflow: init → backup → mount → restore → prune.
 
@@ -302,11 +325,11 @@ Create integration test suite that exercises full workflow: init → backup → 
 - Tests run with temporary directories and config
 - Tests marked `#[ignore]` (require restic)
 - CI can run tests with restic installed
-- `[BLOCKED BY: #24]`
+- `[BLOCKED BY: #28]`
 
 ---
 
-### 28. [ ] Documentation and README
+### 30. [ ] Documentation and README
 
 Write user-facing README with installation, quick start, and configuration examples.
 
@@ -316,7 +339,7 @@ Write user-facing README with installation, quick start, and configuration examp
 - Quick start guide
 - Configuration reference with examples
 - Troubleshooting section
-- `[BLOCKED BY: #27]`
+- `[BLOCKED BY: #29]`
 
 ---
 
