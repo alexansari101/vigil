@@ -1,9 +1,12 @@
 use anyhow::Result;
+use backutil_daemon::executor::ResticExecutor;
 use backutil_daemon::manager::JobManager;
 use backutil_daemon::watcher::{FileWatcher, WatcherEvent};
 use backutil_lib::config::{BackupSet, Config, GlobalConfig};
+use backutil_lib::paths;
 use backutil_lib::types::JobState;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 use tempfile::tempdir;
 use tokio::sync::mpsc;
@@ -11,6 +14,11 @@ use tokio::sync::mpsc;
 /// End-to-end integration test for file watcher + debounce logic.
 /// This test validates the complete pipeline: file change → watcher → JobManager → state transitions.
 /// Eliminates the need for manual verification of real-time file detection.
+///
+/// **NOTE:** This test modifies XDG environment variables and must be run single-threaded:
+/// ```bash
+/// cargo test -p backutil-daemon --test integration_test -- --ignored --test-threads=1
+/// ```
 #[tokio::test]
 #[ignore]
 async fn test_file_watcher_to_debounce_integration() -> Result<()> {
@@ -19,7 +27,26 @@ async fn test_file_watcher_to_debounce_integration() -> Result<()> {
     // Setup: Create temporary directories
     let tmp = tempdir()?;
     let source_path = tmp.path().join("source");
+    let repo_path = tmp.path().join("repo");
     fs::create_dir(&source_path)?;
+
+    // Setup: Isolated config/data dirs via env vars to avoid polluting user config
+    let config_home = tmp.path().join("config");
+    let data_home = tmp.path().join("data");
+    fs::create_dir_all(&config_home)?;
+    fs::create_dir_all(&data_home)?;
+    std::env::set_var("XDG_CONFIG_HOME", &config_home);
+    std::env::set_var("XDG_DATA_HOME", &data_home);
+
+    // Setup: Create password file
+    let pw_file = paths::password_path();
+    fs::create_dir_all(pw_file.parent().unwrap())?;
+    fs::write(&pw_file, "testpassword")?;
+    fs::set_permissions(&pw_file, fs::Permissions::from_mode(0o600))?;
+
+    // Setup: Initialize restic repository
+    let executor = ResticExecutor::new();
+    executor.init(repo_path.to_str().unwrap()).await?;
 
     let config = Config {
         global: GlobalConfig::default(),
@@ -27,7 +54,7 @@ async fn test_file_watcher_to_debounce_integration() -> Result<()> {
             name: "test".to_string(),
             source: Some(source_path.to_string_lossy().to_string()),
             sources: None,
-            target: "/tmp/target".to_string(),
+            target: repo_path.to_string_lossy().to_string(),
             exclude: Some(vec!["*.tmp".to_string()]),
             debounce_seconds: Some(1), // 1 second for faster test
             retention: None,
@@ -79,15 +106,15 @@ async fn test_file_watcher_to_debounce_integration() -> Result<()> {
         state
     );
 
-    // Wait for debounce to complete (1s + margin)
-    tokio::time::sleep(Duration::from_millis(1400)).await;
-    let state = get_state().await;
-    assert_eq!(state, JobState::Running, "Expected Running after debounce");
-
-    // Wait for simulated backup to complete (2s + margin)
+    // Wait for debounce to complete and backup to finish
+    // (1s debounce + real backup which is fast for small files)
     tokio::time::sleep(Duration::from_millis(2500)).await;
     let state = get_state().await;
-    assert_eq!(state, JobState::Idle, "Expected Idle after backup");
+    assert_eq!(
+        state,
+        JobState::Idle,
+        "Expected Idle after backup completes"
+    );
 
     // Drain any remaining events from the first test
     while tokio::time::timeout(Duration::from_millis(50), watcher_rx.recv())
@@ -126,8 +153,8 @@ async fn test_file_watcher_to_debounce_integration() -> Result<()> {
         "Expected Debouncing"
     );
 
-    // Wait for full cycle: debounce (1s) + backup (2s) + margin
-    tokio::time::sleep(Duration::from_millis(3500)).await;
+    // Wait for full cycle: debounce (1s) + backup + margin
+    tokio::time::sleep(Duration::from_millis(2500)).await;
     assert_eq!(
         get_state().await,
         JobState::Idle,

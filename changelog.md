@@ -426,3 +426,32 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - None.
+
+---
+
+## [2026-01-26] — test: fix integration tests for real restic execution
+
+**What changed:**
+
+- Updated `test_debounce_logic` and `test_file_watcher_to_debounce_integration` to properly set up isolated restic environments.
+- Tests now use XDG_CONFIG_HOME/XDG_DATA_HOME env vars to avoid polluting user config.
+- Added documentation noting that ignored tests must run with `--test-threads=1` due to environment variable usage.
+
+**Why:**
+
+- Tests were failing after ResticExecutor integration because they didn't set up password files or repositories.
+- Environment variable isolation prevents tests from interfering with each other or user config.
+
+**Files affected:**
+
+- manager.rs (updated test)
+- integration_test.rs (updated test)
+
+**Testing notes:**
+
+- All ignored tests pass with: `cargo test -p backutil-daemon -- --ignored --test-threads=1`
+- Standard tests remain unaffected.
+
+**Dependencies/blockers:**
+
+- None.

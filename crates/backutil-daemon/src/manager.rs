@@ -225,18 +225,54 @@ impl JobManager {
 mod tests {
     use super::*;
     use backutil_lib::config::GlobalConfig;
+    use backutil_lib::paths;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::tempdir;
 
+    /// Tests the debounce state machine with real restic integration.
+    ///
+    /// **NOTE:** This test modifies XDG environment variables and must be run single-threaded:
+    /// ```bash
+    /// cargo test -p backutil-daemon --lib -- --ignored --test-threads=1
+    /// ```
     #[tokio::test]
     #[ignore]
     async fn test_debounce_logic() -> Result<()> {
         let _ = tracing_subscriber::fmt::try_init();
+
+        // Setup: Isolated temp environment
+        let tmp = tempdir()?;
+        let source_path = tmp.path().join("source");
+        let repo_path = tmp.path().join("repo");
+        fs::create_dir(&source_path)?;
+        fs::write(source_path.join("test.txt"), "test data")?;
+
+        // Setup: Isolated config/data dirs via env vars
+        let config_home = tmp.path().join("config");
+        let data_home = tmp.path().join("data");
+        fs::create_dir_all(&config_home)?;
+        fs::create_dir_all(&data_home)?;
+        std::env::set_var("XDG_CONFIG_HOME", &config_home);
+        std::env::set_var("XDG_DATA_HOME", &data_home);
+
+        // Setup: Create password file
+        let pw_file = paths::password_path();
+        fs::create_dir_all(pw_file.parent().unwrap())?;
+        fs::write(&pw_file, "testpassword")?;
+        fs::set_permissions(&pw_file, fs::Permissions::from_mode(0o600))?;
+
+        // Setup: Initialize restic repository
+        let executor = crate::executor::ResticExecutor::new();
+        executor.init(repo_path.to_str().unwrap()).await?;
+
         let config = Config {
             global: GlobalConfig::default(),
             backup_sets: vec![BackupSet {
                 name: "test".to_string(),
-                source: Some("/tmp/source".to_string()),
+                source: Some(source_path.to_string_lossy().to_string()),
                 sources: None,
-                target: "/tmp/target".to_string(),
+                target: repo_path.to_string_lossy().to_string(),
                 exclude: None,
                 debounce_seconds: Some(1), // 1 second for faster test
                 retention: None,
@@ -270,12 +306,8 @@ mod tests {
             state
         );
 
-        // Wait for debounce to complete (1s debounce + margin)
-        tokio::time::sleep(Duration::from_millis(1400)).await;
-        let state = get_test_state().await.unwrap();
-        assert_eq!(state, JobState::Running, "Expected Running after debounce");
-
-        // Wait for simulated backup to complete (2s + margin)
+        // Wait for debounce to complete and backup to finish
+        // (1s debounce + real backup which is fast for small files)
         tokio::time::sleep(Duration::from_millis(2500)).await;
         let state = get_test_state().await.unwrap();
         assert_eq!(
