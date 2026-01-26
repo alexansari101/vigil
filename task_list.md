@@ -30,18 +30,6 @@
 
 ## Phase 3: CLI
 
-### 15. [ ] CLI init command
-
-Implement `backutil init [SET]` to initialize restic repository.
-
-**Acceptance criteria:**
-
-- Prompts for password if password file doesn't exist
-- Creates password file with mode 600
-- Runs `restic init` for specified set or all sets
-- Clear error if repository already initialized
-- `[BLOCKED BY: #8, #14]`
-
 ---
 
 ### 16. [ ] CLI backup command
@@ -320,4 +308,9 @@ Completed: 2026-01-26
 
 Branch: `feature/cli-skeleton-status`
 Review Fixes: 2026-01-26 (Grammar, Unit Tests, Status Indicator)
+Completed: 2026-01-26
+
+### 15. [x] CLI init command
+
+Branch: `feature/cli-init`
 Completed: 2026-01-26

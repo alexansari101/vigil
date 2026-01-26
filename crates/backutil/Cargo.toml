@@ -13,3 +13,4 @@ ratatui.workspace = true
 crossterm.workspace = true
 chrono.workspace = true
 anyhow.workspace = true
+rpassword.workspace = true

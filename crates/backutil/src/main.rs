@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use backutil_lib::ipc::{Request, Response, ResponseData};
 use backutil_lib::paths;
 use backutil_lib::types::{JobState, SetStatus};
@@ -70,11 +70,85 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Init { set } => {
+            handle_init(set).await?;
+        }
         Commands::Status => {
             handle_status().await?;
         }
         _ => {
             println!("Command not yet implemented.");
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_init(set_name: Option<String>) -> anyhow::Result<()> {
+    let config = backutil_lib::config::load_config().context("Failed to load configuration")?;
+    let password_path = paths::password_path();
+
+    if !password_path.exists() {
+        println!("Repository password file not found.");
+        let password = rpassword::prompt_password("Enter password for new repositories: ")?;
+        let confirm = rpassword::prompt_password("Confirm password: ")?;
+
+        if password != confirm {
+            anyhow::bail!("Passwords do not match.");
+        }
+
+        if let Some(parent) = password_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(&password_path, password)?;
+        std::fs::set_permissions(&password_path, std::fs::Permissions::from_mode(0o600))?;
+        println!("Password saved to {:?}", password_path);
+    }
+
+    let sets_to_init: Vec<_> = if let Some(name) = set_name {
+        let set = config
+            .backup_sets
+            .iter()
+            .find(|s| s.name == name)
+            .ok_or_else(|| anyhow!("Backup set '{}' not found in config", name))?;
+        vec![set]
+    } else {
+        config.backup_sets.iter().collect()
+    };
+
+    if sets_to_init.is_empty() {
+        println!("No backup sets found to initialize.");
+        return Ok(());
+    }
+
+    for set in sets_to_init {
+        println!(
+            "Initializing repository for set '{}' at '{}'...",
+            set.name, set.target
+        );
+
+        let output = tokio::process::Command::new("restic")
+            .arg("init")
+            .arg("--repo")
+            .arg(&set.target)
+            .arg("--password-file")
+            .arg(&password_path)
+            .output()
+            .await?;
+
+        if output.status.success() {
+            println!("Successfully initialized set '{}'.", set.name);
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("repository master key and config already initialized")
+                || stderr.contains("config already initialized")
+            {
+                println!("Set '{}' is already initialized.", set.name);
+            } else {
+                eprintln!("Failed to initialize set '{}': {}", set.name, stderr.trim());
+            }
         }
     }
 
