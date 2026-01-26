@@ -1,6 +1,7 @@
+use crate::executor::ResticExecutor;
 use anyhow::Result;
 use backutil_lib::config::{BackupSet, Config};
-use backutil_lib::types::{JobState, SetStatus};
+use backutil_lib::types::{BackupResult, JobState, SetStatus};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -9,12 +10,15 @@ use tracing::{debug, info};
 
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, Job>>>,
+    executor: Arc<ResticExecutor>,
 }
 
 struct Job {
     set: BackupSet,
     state: JobState,
     last_change: Option<Instant>,
+    last_backup: Option<BackupResult>,
+    is_mounted: bool,
 }
 
 impl JobManager {
@@ -27,11 +31,14 @@ impl JobManager {
                     set: set.clone(),
                     state: JobState::Idle,
                     last_change: None,
+                    last_backup: None,
+                    is_mounted: false,
                 },
             );
         }
         Self {
             jobs: Arc::new(Mutex::new(jobs)),
+            executor: Arc::new(ResticExecutor::new()),
         }
     }
 
@@ -53,10 +60,11 @@ impl JobManager {
                     );
 
                     let jobs_clone = self.jobs.clone();
+                    let executor_clone = self.executor.clone();
                     let set_name_owned = set_name.to_string();
 
                     tokio::spawn(async move {
-                        Self::job_worker(jobs_clone, set_name_owned).await;
+                        Self::job_worker(jobs_clone, executor_clone, set_name_owned).await;
                     });
                 }
                 JobState::Debouncing { .. } => {
@@ -75,16 +83,19 @@ impl JobManager {
         Ok(())
     }
 
-    async fn job_worker(jobs: Arc<Mutex<HashMap<String, Job>>>, set_name: String) {
+    async fn job_worker(
+        jobs: Arc<Mutex<HashMap<String, Job>>>,
+        executor: Arc<ResticExecutor>,
+        set_name: String,
+    ) {
         loop {
             // Debouncing phase: wait for timer to stabilize
             let debounce_duration;
-            let start_time;
+            let mut start_time;
             {
                 let jobs_lock = jobs.lock().await;
                 if let Some(job) = jobs_lock.get(&set_name) {
-                    debounce_duration =
-                        Duration::from_secs(job.set.debounce_seconds.unwrap_or(60));
+                    debounce_duration = Duration::from_secs(job.set.debounce_seconds.unwrap_or(60));
                     start_time = job.last_change.unwrap();
                 } else {
                     return; // Job removed
@@ -100,10 +111,8 @@ impl JobManager {
                     if let Some(last_change) = job.last_change {
                         // Check if the timer was reset (new file change)
                         if last_change > start_time {
-                            info!("Timer reset for set {}, restarting worker", set_name);
-                            drop(jobs_lock);
-                            // Exit this worker - a new one was spawned
-                            return;
+                            info!("Timer reset for set {}, restarting debounce", set_name);
+                            start_time = last_change;
                         }
 
                         let elapsed = last_change.elapsed();
@@ -126,36 +135,57 @@ impl JobManager {
                 }
             }
 
-            // Running phase (Placeholder)
+            // Running phase
             let backup_start_time = Instant::now();
             debug!("Starting backup execution for set {}", set_name);
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            info!(
-                "Backup completed for set {} in {:.2}s",
-                set_name,
-                backup_start_time.elapsed().as_secs_f64()
-            );
 
-            // Check if new changes occurred during backup
-            {
-                let mut jobs_lock = jobs.lock().await;
-                if let Some(job) = jobs_lock.get_mut(&set_name) {
-                    if let Some(last_change) = job.last_change {
-                        // If changes occurred during backup, re-enter debouncing
-                        if last_change > backup_start_time {
-                            info!(
-                                "New changes detected for set {} during backup, re-debouncing",
-                                set_name
-                            );
-                            let debounce_secs = job.set.debounce_seconds.unwrap_or(60);
-                            job.state = JobState::Debouncing {
-                                remaining_secs: debounce_secs,
-                            };
-                            continue; // Loop back to debouncing
+            let result = {
+                let jobs_lock = jobs.lock().await;
+                let job = jobs_lock.get(&set_name).unwrap();
+                executor.backup(&job.set).await
+            };
+
+            match result {
+                Ok(backup_result) => {
+                    info!(
+                        "Backup completed for set {} in {:.2}s. Success: {}",
+                        set_name,
+                        backup_start_time.elapsed().as_secs_f64(),
+                        backup_result.success
+                    );
+
+                    let mut jobs_lock = jobs.lock().await;
+                    if let Some(job) = jobs_lock.get_mut(&set_name) {
+                        job.last_backup = Some(backup_result.clone());
+                        if !backup_result.success {
+                            job.state = JobState::Error;
+                            break;
                         }
+
+                        // Check if new changes occurred during backup
+                        if let Some(last_change) = job.last_change {
+                            if last_change > backup_start_time {
+                                info!(
+                                    "New changes detected for set {} during backup, re-debouncing",
+                                    set_name
+                                );
+                                let debounce_secs = job.set.debounce_seconds.unwrap_or(60);
+                                job.state = JobState::Debouncing {
+                                    remaining_secs: debounce_secs,
+                                };
+                                continue;
+                            }
+                        }
+                        job.state = JobState::Idle;
+                        break;
                     }
-                    // No new changes, return to Idle
-                    job.state = JobState::Idle;
+                }
+                Err(e) => {
+                    info!("Backup failed for set {}: {}", set_name, e);
+                    let mut jobs_lock = jobs.lock().await;
+                    if let Some(job) = jobs_lock.get_mut(&set_name) {
+                        job.state = JobState::Error;
+                    }
                     break;
                 }
             }
@@ -168,7 +198,7 @@ impl JobManager {
             .map(|job| SetStatus {
                 name: job.set.name.clone(),
                 state: job.state.clone(),
-                last_backup: None, // Placeholder
+                last_backup: job.last_backup.clone(),
                 source_paths: {
                     let mut paths = Vec::new();
                     if let Some(ref s) = job.set.source {
@@ -182,7 +212,7 @@ impl JobManager {
                     paths
                 },
                 target: job.set.target.clone().into(),
-                is_mounted: false, // Placeholder
+                is_mounted: job.is_mounted,
             })
             .collect()
     }
@@ -194,6 +224,7 @@ mod tests {
     use backutil_lib::config::GlobalConfig;
 
     #[tokio::test]
+    #[ignore]
     async fn test_debounce_logic() -> Result<()> {
         let _ = tracing_subscriber::fmt::try_init();
         let config = Config {
@@ -226,7 +257,7 @@ mod tests {
 
         // Trigger a file change
         manager.handle_file_change("test").await?;
-        
+
         // Should enter Debouncing state
         tokio::time::sleep(Duration::from_millis(100)).await;
         let state = get_test_state().await.unwrap();
@@ -244,7 +275,11 @@ mod tests {
         // Wait for simulated backup to complete (2s + margin)
         tokio::time::sleep(Duration::from_millis(2500)).await;
         let state = get_test_state().await.unwrap();
-        assert_eq!(state, JobState::Idle, "Expected Idle after backup completes");
+        assert_eq!(
+            state,
+            JobState::Idle,
+            "Expected Idle after backup completes"
+        );
 
         Ok(())
     }

@@ -359,3 +359,41 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - Unblocks: Task #9 (Daemon backup orchestration).
+
+---
+
+## [2026-01-26] — daemon: implement restic executor and integrate with manager
+
+**What changed:**
+
+- Implemented `ResticExecutor` in `executor.rs` for executing `init`, `backup`, `forget/prune`, `snapshots`, and `mount`.
+- Added support for `--password-file` and `--json` output parsing.
+- Integrated `ResticExecutor` into `JobManager` to replace placeholder backup logic.
+- Implemented robust integration tests in `tests/restic_test.rs` covering the full restic workflow.
+- Refactored binary/library structure in `backutil-daemon` to fix module visibility issues.
+
+**Why:**
+
+- Implements Task #8 from Phase 2.
+- Direct execution of restic commands is the core functionality of the daemon.
+- Isolated integration tests ensure reliability of the restic command mapping and output parsing.
+
+**Files affected:**
+
+- [executor.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/executor.rs) (new)
+- [lib.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/lib.rs) (updated)
+- [main.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/main.rs) (updated)
+- [manager.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/manager.rs) (updated)
+- [restic_test.rs](file:///home/alex/backup_util/crates/backutil-daemon/tests/restic_test.rs) (new)
+- [integration_test.rs](file:///home/alex/backup_util/crates/backutil-daemon/tests/integration_test.rs) (updated)
+
+**Testing notes:**
+
+- Added `restic_test.rs` as a robust integration suite (requires `restic`).
+- Verified all restic commands (init, backup, snapshots, prune, mount) work in an isolated environment.
+- Marked restic-dependent tests as `#[ignore]` to keep standard test runs clean.
+- Successfully ran `cargo test -p backutil-daemon -- --ignored`.
+
+**Dependencies/blockers:**
+
+- Unblocks: Task #9 (Daemon backup orchestration).

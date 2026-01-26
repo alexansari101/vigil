@@ -24,19 +24,6 @@
 
 ## Phase 2: Daemon Core
 
-### 8. [ ] Restic executor
-
-Implement restic command execution. Support: init, backup, forget/prune, snapshots (JSON), mount.
-
-**Acceptance criteria:**
-
-- Executes restic with correct arguments per spec.md Section 9
-- Passes password via `--password-file`
-- Parses JSON output from `restic snapshots`
-- Captures and logs stderr on failure
-- Integration tests (marked `#[ignore]`) that require restic installed
-- `[BLOCKED BY: #4]`
-
 ---
 
 ### 9. [ ] Daemon backup orchestration
@@ -378,4 +365,9 @@ Completed: 2026-01-26
 ### 7. [x] Debounce logic
 
 Branch: `feature/debounce-logic`
+Completed: 2026-01-26
+
+### 8. [x] Restic executor
+
+Branch: `feature/restic-executor`
 Completed: 2026-01-26

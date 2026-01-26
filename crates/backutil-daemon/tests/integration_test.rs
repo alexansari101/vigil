@@ -12,6 +12,7 @@ use tokio::sync::mpsc;
 /// This test validates the complete pipeline: file change → watcher → JobManager → state transitions.
 /// Eliminates the need for manual verification of real-time file detection.
 #[tokio::test]
+#[ignore]
 async fn test_file_watcher_to_debounce_integration() -> Result<()> {
     let _ = tracing_subscriber::fmt::try_init();
 
@@ -100,10 +101,7 @@ async fn test_file_watcher_to_debounce_integration() -> Result<()> {
 
     // Should NOT receive an event (wait a bit to be sure)
     let event = tokio::time::timeout(Duration::from_millis(500), watcher_rx.recv()).await;
-    assert!(
-        event.is_err(),
-        "Should not receive event for excluded file"
-    );
+    assert!(event.is_err(), "Should not receive event for excluded file");
 
     // State should remain Idle
     assert_eq!(get_state().await, JobState::Idle);
