@@ -10,6 +10,7 @@ use std::process::Stdio;
 use tokio::process::{Child, Command};
 use tracing::{debug, error, info};
 
+#[derive(Default)]
 pub struct ResticExecutor;
 
 #[derive(Debug, Deserialize)]
@@ -177,6 +178,24 @@ impl ResticExecutor {
         info!("Pruning repository for set: {}", set.name);
         let password_file = paths::password_path();
 
+        // SAFETY: Require at least one retention policy to prevent deleting all snapshots.
+        // Running `restic forget --prune` without any --keep-* flags deletes everything.
+        let retention = set.retention.as_ref().ok_or_else(|| {
+            anyhow!("Cannot prune set '{}': no retention policy specified. This would delete all snapshots.", set.name)
+        })?;
+
+        let has_any_policy = retention.keep_last.is_some()
+            || retention.keep_daily.is_some()
+            || retention.keep_weekly.is_some()
+            || retention.keep_monthly.is_some();
+
+        if !has_any_policy {
+            return Err(anyhow!(
+                "Cannot prune set '{}': retention policy has no keep rules. This would delete all snapshots.",
+                set.name
+            ));
+        }
+
         let mut args = vec![
             "forget".to_string(),
             "--repo".to_string(),
@@ -186,23 +205,21 @@ impl ResticExecutor {
             "--prune".to_string(),
         ];
 
-        if let Some(ref r) = set.retention {
-            if let Some(last) = r.keep_last {
-                args.push("--keep-last".to_string());
-                args.push(last.to_string());
-            }
-            if let Some(daily) = r.keep_daily {
-                args.push("--keep-daily".to_string());
-                args.push(daily.to_string());
-            }
-            if let Some(weekly) = r.keep_weekly {
-                args.push("--keep-weekly".to_string());
-                args.push(weekly.to_string());
-            }
-            if let Some(monthly) = r.keep_monthly {
-                args.push("--keep-monthly".to_string());
-                args.push(monthly.to_string());
-            }
+        if let Some(last) = retention.keep_last {
+            args.push("--keep-last".to_string());
+            args.push(last.to_string());
+        }
+        if let Some(daily) = retention.keep_daily {
+            args.push("--keep-daily".to_string());
+            args.push(daily.to_string());
+        }
+        if let Some(weekly) = retention.keep_weekly {
+            args.push("--keep-weekly".to_string());
+            args.push(weekly.to_string());
+        }
+        if let Some(monthly) = retention.keep_monthly {
+            args.push("--keep-monthly".to_string());
+            args.push(monthly.to_string());
         }
 
         self.run_restic(args).await?;

@@ -397,3 +397,32 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - Unblocks: Task #9 (Daemon backup orchestration).
+
+---
+
+## [2026-01-26] — review: fix safety issues in restic executor
+
+**What changed:**
+
+- Added safety guard in `prune()` to prevent deleting all snapshots when no retention policy is specified.
+- Fixed potential panic in `job_worker()` by replacing `unwrap()` with safe pattern matching.
+- Added `#[derive(Default)]` to `ResticExecutor` to satisfy clippy.
+
+**Why:**
+
+- Code review of Task #8 identified critical safety issue: `prune()` without retention flags would delete all snapshots.
+- The `unwrap()` in job_worker could panic if job was removed during backup execution.
+
+**Files affected:**
+
+- executor.rs (updated)
+- manager.rs (updated)
+
+**Testing notes:**
+
+- All workspace tests pass.
+- Clippy and fmt checks pass.
+
+**Dependencies/blockers:**
+
+- None.

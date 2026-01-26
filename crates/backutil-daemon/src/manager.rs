@@ -141,7 +141,10 @@ impl JobManager {
 
             let result = {
                 let jobs_lock = jobs.lock().await;
-                let job = jobs_lock.get(&set_name).unwrap();
+                let Some(job) = jobs_lock.get(&set_name) else {
+                    // Job was removed during execution
+                    return;
+                };
                 executor.backup(&job.set).await
             };
 
