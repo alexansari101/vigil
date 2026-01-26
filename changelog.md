@@ -8,12 +8,39 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — review: fix mount/unmount exit codes and TTY check
+
+**What changed:**
+
+- Fixed exit codes for mount/unmount errors to use code 5 per spec.md Section 12.
+- Fixed TTY check for interactive snapshot picker to check stdout/stdin instead of stderr.
+
+**Why:**
+
+- Spec compliance: exit code 5 is specified for mount/unmount errors, but code was using exit(1).
+- The interactive picker prints to stdout and reads from stdin, so checking stderr for TTY was incorrect.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (updated)
+
+**Testing notes:**
+
+- All workspace tests pass.
+- Quality checks pass: cargo test, cargo fmt --check, cargo clippy.
+
+**Dependencies/blockers:**
+
+- None.
+
+---
+
 ## [2026-01-26] — feature: cli mount/unmount commands
 
 **What changed:**
 
 - Implemented `backutil mount <SET> [SNAPSHOT_ID]` command.
-- Added interactive snapshot picker for `mount` when no ID is provided and stderr is a TTY.
+- Added interactive snapshot picker for `mount` when no ID is provided and stdout/stdin are TTYs.
 - Implemented `backutil unmount [SET]` command (supports specific set or all).
 - Integrated with daemon IPC for mount/unmount operations.
 - Added integration test `cli_mount_test.rs` covering mount and unmount flows.

@@ -316,9 +316,9 @@ async fn handle_status() -> anyhow::Result<()> {
 }
 
 async fn handle_mount(set_name: String, mut snapshot_id: Option<String>) -> anyhow::Result<()> {
-    // If no snapshot ID provided and stderr is a TTY, show interactive picker
+    // If no snapshot ID provided and stdout/stdin are TTYs, show interactive picker
     use std::io::IsTerminal;
-    if snapshot_id.is_none() && std::io::stderr().is_terminal() {
+    if snapshot_id.is_none() && std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
         snapshot_id = pick_snapshot(&set_name).await?;
         if snapshot_id.is_none() {
             println!("No snapshot selected.");
@@ -343,7 +343,7 @@ async fn handle_mount(set_name: String, mut snapshot_id: Option<String>) -> anyh
         }
         Response::Error { code, message } => {
             eprintln!("Error mounting snapshot ({}): {}", code, message);
-            std::process::exit(1);
+            std::process::exit(5); // Exit code 5 per spec.md Section 12: Mount/unmount error
         }
         _ => {
             println!("Unexpected response from daemon.");
@@ -430,7 +430,7 @@ async fn handle_unmount(set_name: Option<String>) -> anyhow::Result<()> {
         }
         Response::Error { code, message } => {
             eprintln!("Error unmounting ({}): {}", code, message);
-            std::process::exit(1);
+            std::process::exit(5); // Exit code 5 per spec.md Section 12: Mount/unmount error
         }
         _ => {
             println!("Unexpected response from daemon.");
