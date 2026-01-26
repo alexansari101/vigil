@@ -26,18 +26,6 @@
 
 ---
 
-### 7. [ ] Debounce logic
-
-Implement debounce timer per backup set. Reset timer on each file change. Trigger backup when timer expires.
-
-**Acceptance criteria:**
-
-- Per-set debounce with configurable delay
-- Timer resets on new changes during debounce
-- State transitions: Idle → Debouncing → Running (per spec.md Section 7)
-- Unit tests for timer reset behavior
-- `[BLOCKED BY: #6]`
-
 ---
 
 ### 8. [ ] Restic executor
@@ -360,4 +348,9 @@ Completed: 2026-01-25
 ### 6. [x] File watcher
 
 Branch: `feature/file-watcher`
+Completed: 2026-01-26
+
+### 7. [x] Debounce logic
+
+Branch: `feature/debounce-logic`
 Completed: 2026-01-26

@@ -11,13 +11,18 @@ use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
 mod watcher;
+mod manager;
+
 use watcher::{FileWatcher, WatcherEvent};
+use manager::JobManager;
+use std::sync::Arc;
 
 struct Daemon {
     pid_path: PathBuf,
     socket_path: PathBuf,
     config: Config,
     shutdown_tx: broadcast::Sender<()>,
+    job_manager: Arc<JobManager>,
 }
 
 impl Daemon {
@@ -26,11 +31,13 @@ impl Daemon {
         let socket_path = paths::socket_path();
         let config = load_config().context("Failed to load configuration")?;
         let (shutdown_tx, _) = broadcast::channel(1);
+        let job_manager = Arc::new(JobManager::new(&config));
         Ok(Self {
             pid_path,
             socket_path,
             config,
             shutdown_tx,
+            job_manager,
         })
     }
 
@@ -100,8 +107,9 @@ impl Daemon {
                     match accept_res {
                         Ok((stream, _)) => {
                             let shutdown_tx = self.shutdown_tx.clone();
+                            let job_manager = self.job_manager.clone();
                             tokio::spawn(async move {
-                                if let Err(e) = handle_client(stream, shutdown_tx).await {
+                                if let Err(e) = handle_client(stream, shutdown_tx, job_manager).await {
                                     error!("Error handling client: {}", e);
                                 }
                             });
@@ -124,7 +132,9 @@ impl Daemon {
                         match event {
                             WatcherEvent::FileChanged { set_name, path } => {
                                 debug!("File change detected for set {}: {:?}", set_name, path);
-                                // TODO: Trigger debounce logic (Next task)
+                                if let Err(e) = self.job_manager.handle_file_change(&set_name).await {
+                                    error!("Error handling file change for set {}: {}", set_name, e);
+                                }
                             }
                         }
                     }
@@ -140,7 +150,11 @@ impl Daemon {
     }
 }
 
-async fn handle_client(mut stream: UnixStream, shutdown_tx: broadcast::Sender<()>) -> Result<()> {
+async fn handle_client(
+    mut stream: UnixStream,
+    shutdown_tx: broadcast::Sender<()>,
+    job_manager: Arc<JobManager>,
+) -> Result<()> {
     let (reader, mut writer) = stream.split();
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
@@ -165,8 +179,8 @@ async fn handle_client(mut stream: UnixStream, shutdown_tx: broadcast::Sender<()
         let response = match request {
             Request::Ping => Response::Pong,
             Request::Status => {
-                // TODO: Implement actual status
-                Response::Ok(Some(ResponseData::Status { sets: vec![] }))
+                let sets = job_manager.get_status().await;
+                Response::Ok(Some(ResponseData::Status { sets }))
             }
             Request::Shutdown => {
                 info!("Shutdown requested via IPC");
@@ -227,6 +241,10 @@ mod tests {
                 backup_sets: vec![],
             },
             shutdown_tx,
+            job_manager: Arc::new(JobManager::new(&Config {
+                global: Default::default(),
+                backup_sets: vec![],
+            })),
         };
 
         daemon.create_pid_file()?;

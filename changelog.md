@@ -326,3 +326,36 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 - Added `globset`.
 - Unblocks: Task #7 (Debounce logic).
+
+---
+
+## [2026-01-26] 45a5a30 — daemon: implement debounce logic with JobManager
+
+**What changed:**
+
+- Implemented `JobManager` in `crates/backutil-daemon/src/manager.rs` to handle per-set backup jobs.
+- Added debounce timer logic: file changes trigger a delay before a backup is initiated.
+- Implemented state machine: `Idle` -> `Debouncing` -> `Running` -> `Idle`.
+- Handled concurrent changes: if a file is changed during an active backup, a new debounce cycle starts after the current backup finishes.
+- Integrated `JobManager` into `main.rs`, updating IPC `Status` to return real-time job states.
+- Added comprehensive unit tests for debounce logic and state transitions.
+
+**Why:**
+
+- Implements Task #7 and FR1.
+- Prevents resource thrashing by batching multiple rapid file changes into a single backup run.
+
+**Files affected:**
+
+- crates/backutil-daemon/src/manager.rs (new)
+- crates/backutil-daemon/src/main.rs (updated)
+
+**Testing notes:**
+
+- Unit tests verify timer reset, expiration, and state transitions.
+- Manual verification using temporary config and source directory confirmed correct debounce behavior and IPC status reporting.
+- Verified that changes during "Running" state correctly queue a new "Debouncing" cycle.
+
+**Dependencies/blockers:**
+
+- Unblocks: Task #9 (Daemon backup orchestration).
