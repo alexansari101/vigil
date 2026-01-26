@@ -181,6 +181,7 @@ Before marking a task complete:
 - [ ] `cargo fmt` passes
 - [ ] `cargo clippy` has no warnings
 - [ ] `cargo test` passes
+- [ ] If modifying daemon code: `cargo test -p backutil-daemon -- --ignored --test-threads=1` passes (requires restic)
 - [ ] New features have corresponding tests
 - [ ] Manual verification of new feature completed
 - [ ] Manual verification of existing features (regression) completed
