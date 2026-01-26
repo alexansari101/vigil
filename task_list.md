@@ -26,20 +26,6 @@
 
 ---
 
-### 9. [ ] Daemon backup orchestration
-
-Connect watcher → debounce → executor. Handle `Backup` IPC request. Track job state per set. Send desktop notification on failure.
-
-**Acceptance criteria:**
-
-- File change triggers debounced backup
-- `Backup` IPC request triggers immediate backup
-- Concurrent backup requests for same set are queued/rejected
-- Sends `notify-send` on backup failure
-- Records actual backup duration and added bytes in BackupResult
-- Properly updates job state to Idle or Error after backup completion
-- `[BLOCKED BY: #7, #8]`
-
 ---
 
 ### 10. [ ] Daemon status and snapshots
@@ -370,4 +356,9 @@ Completed: 2026-01-26
 ### 8. [x] Restic executor
 
 Branch: `feature/restic-executor`
+Completed: 2026-01-26
+
+### 9. [x] Daemon backup orchestration
+
+Branch: `feature/daemon-orchestration`
 Completed: 2026-01-26

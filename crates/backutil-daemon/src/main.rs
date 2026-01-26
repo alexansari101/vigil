@@ -172,6 +172,7 @@ async fn handle_client(
         };
 
         line.clear();
+        let is_shutdown = matches!(request, Request::Shutdown);
 
         let response = match request {
             Request::Ping => Response::Pong,
@@ -185,6 +186,27 @@ async fn handle_client(
                 let _ = shutdown_tx.send(());
                 Response::Ok(None)
             }
+            Request::Backup { set_name } => {
+                match set_name {
+                    Some(name) => match job_manager.trigger_backup(&name).await {
+                        Ok(_) => Response::Ok(Some(ResponseData::BackupStarted { set_name: name })),
+                        Err(e) => Response::Error {
+                            code: "BackupFailed".into(),
+                            message: e.to_string(),
+                        },
+                    },
+                    None => {
+                        // Backup all sets
+                        let statuses = job_manager.get_status().await;
+                        for status in statuses {
+                            if let Err(e) = job_manager.trigger_backup(&status.name).await {
+                                warn!("Failed to trigger backup for set {}: {}", status.name, e);
+                            }
+                        }
+                        Response::Ok(None)
+                    }
+                }
+            }
             _ => Response::Error {
                 code: "NotImplemented".into(),
                 message: "Command not implemented yet".into(),
@@ -195,7 +217,7 @@ async fn handle_client(
         writer.write_all(json.as_bytes()).await?;
 
         // If shutdown was requested, close connection after responding
-        if matches!(request, Request::Shutdown) {
+        if is_shutdown {
             break;
         }
     }

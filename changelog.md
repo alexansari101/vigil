@@ -455,3 +455,37 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - None.
+
+---
+
+## [2026-01-26] — daemon: implement backup orchestration and manual trigger
+
+**What changed:**
+
+- Implemented `trigger_backup` in `JobManager` to handle immediate backup requests.
+- Updated `Job` state machine to support skipping/shortening debounce on manual trigger.
+- Integrated desktop notifications for backup failures using `notify-rust`.
+- Handled `Backup` IPC request in daemon's `handle_client`.
+- Added `test_manual_trigger` to verify orchestration logic.
+- Fixed race condition in `immediate_trigger` flag management.
+
+**Why:**
+
+- Implements Task #9 and connects file watcher, debounce, and restic executor.
+- Provides immediate user-triggered backups alongside automated ones.
+- Enhances observability through desktop notifications.
+
+**Files affected:**
+
+- [manager.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/manager.rs) (updated)
+- [main.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/main.rs) (updated)
+
+**Testing notes:**
+
+- Verified via `test_manual_trigger` and `test_debounce_logic`.
+- Regression tested with `test_file_watcher_to_debounce_integration` and `test_restic_workflow_integration`.
+- All ignored tests pass with `cargo test -p backutil-daemon -- --ignored --test-threads=1`.
+
+**Dependencies/blockers:**
+
+- Unblocks: Task #10 (Daemon status and snapshots), Task #16 (CLI backup command).

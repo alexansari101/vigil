@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, Instant};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, Job>>>,
@@ -19,6 +19,7 @@ struct Job {
     last_change: Option<Instant>,
     last_backup: Option<BackupResult>,
     is_mounted: bool,
+    immediate_trigger: bool,
 }
 
 impl JobManager {
@@ -33,6 +34,7 @@ impl JobManager {
                     last_change: None,
                     last_backup: None,
                     is_mounted: false,
+                    immediate_trigger: false,
                 },
             );
         }
@@ -79,8 +81,44 @@ impl JobManager {
                     // When the current backup finishes, it will check last_change
                 }
             }
+            Ok(())
+        } else {
+            anyhow::bail!("Unknown backup set: {}", set_name)
         }
-        Ok(())
+    }
+
+    pub async fn trigger_backup(&self, set_name: &str) -> Result<()> {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(job) = jobs.get_mut(set_name) {
+            match job.state {
+                JobState::Running => {
+                    anyhow::bail!("Backup for set {} is already running", set_name);
+                }
+                JobState::Debouncing { .. } => {
+                    job.immediate_trigger = true;
+                    info!(
+                        "Immediate backup triggered for set {} (was debouncing)",
+                        set_name
+                    );
+                }
+                JobState::Idle | JobState::Error => {
+                    job.immediate_trigger = true;
+                    job.state = JobState::Running; // Set to running immediately to prevent debounce start
+                    info!("Immediate backup triggered for set {}", set_name);
+
+                    let jobs_clone = self.jobs.clone();
+                    let executor_clone = self.executor.clone();
+                    let set_name_owned = set_name.to_string();
+
+                    tokio::spawn(async move {
+                        Self::job_worker(jobs_clone, executor_clone, set_name_owned).await;
+                    });
+                }
+            }
+            Ok(())
+        } else {
+            anyhow::bail!("Unknown backup set: {}", set_name)
+        }
     }
 
     async fn job_worker(
@@ -93,10 +131,18 @@ impl JobManager {
             let debounce_duration;
             let mut start_time;
             {
-                let jobs_lock = jobs.lock().await;
-                if let Some(job) = jobs_lock.get(&set_name) {
-                    debounce_duration = Duration::from_secs(job.set.debounce_seconds.unwrap_or(60));
-                    start_time = job.last_change.unwrap();
+                let mut jobs_lock = jobs.lock().await;
+                if let Some(job) = jobs_lock.get_mut(&set_name) {
+                    if matches!(job.state, JobState::Running) {
+                        // Already in running state (immediate trigger)
+                        job.immediate_trigger = false;
+                        debounce_duration = Duration::ZERO; // Skip loop effectively
+                        start_time = Instant::now();
+                    } else {
+                        debounce_duration =
+                            Duration::from_secs(job.set.debounce_seconds.unwrap_or(60));
+                        start_time = job.last_change.unwrap_or_else(Instant::now);
+                    }
                 } else {
                     return; // Job removed
                 }
@@ -104,10 +150,22 @@ impl JobManager {
 
             // Poll every 500ms to update remaining time and check for expiration
             loop {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-
                 let mut jobs_lock = jobs.lock().await;
                 if let Some(job) = jobs_lock.get_mut(&set_name) {
+                    if matches!(job.state, JobState::Running) {
+                        break;
+                    }
+
+                    if job.immediate_trigger {
+                        job.immediate_trigger = false;
+                        job.state = JobState::Running;
+                        info!(
+                            "Immediate trigger detected for set {}, skipping debounce",
+                            set_name
+                        );
+                        break;
+                    }
+
                     if let Some(last_change) = job.last_change {
                         // Check if the timer was reset (new file change)
                         if last_change > start_time {
@@ -115,7 +173,7 @@ impl JobManager {
                             start_time = last_change;
                         }
 
-                        let elapsed = last_change.elapsed();
+                        let elapsed = start_time.elapsed();
                         if elapsed >= debounce_duration {
                             info!(
                                 "Debounce timer expired for set {}, transitioning to Running",
@@ -129,10 +187,16 @@ impl JobManager {
                                 remaining_secs: remaining,
                             };
                         }
+                    } else {
+                        // This shouldn't really happen if we are debouncing
+                        job.state = JobState::Running;
+                        break;
                     }
                 } else {
                     return; // Job removed
                 }
+                drop(jobs_lock);
+                tokio::time::sleep(Duration::from_millis(500)).await;
             }
 
             // Running phase
@@ -162,6 +226,19 @@ impl JobManager {
                         job.last_backup = Some(backup_result.clone());
                         if !backup_result.success {
                             job.state = JobState::Error;
+                            let err_msg = backup_result
+                                .error_message
+                                .clone()
+                                .unwrap_or_else(|| "Unknown error".to_string());
+                            error!("Backup failed for set {}: {}", set_name, err_msg);
+                            let _ = notify_rust::Notification::new()
+                                .summary("Backup Failed")
+                                .body(&format!(
+                                    "Backup for set '{}' failed: {}",
+                                    set_name, err_msg
+                                ))
+                                .icon("dialog-error")
+                                .show();
                             break;
                         }
 
@@ -184,7 +261,16 @@ impl JobManager {
                     }
                 }
                 Err(e) => {
-                    info!("Backup failed for set {}: {}", set_name, e);
+                    let err_msg = e.to_string();
+                    error!("Backup job error for set {}: {}", set_name, err_msg);
+                    let _ = notify_rust::Notification::new()
+                        .summary("Backup Failed")
+                        .body(&format!(
+                            "Internal error backing up set '{}': {}",
+                            set_name, err_msg
+                        ))
+                        .icon("dialog-error")
+                        .show();
                     let mut jobs_lock = jobs.lock().await;
                     if let Some(job) = jobs_lock.get_mut(&set_name) {
                         job.state = JobState::Error;
@@ -315,6 +401,85 @@ mod tests {
             JobState::Idle,
             "Expected Idle after backup completes"
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_manual_trigger() -> Result<()> {
+        let _ = tracing_subscriber::fmt::try_init();
+
+        let tmp = tempdir()?;
+        let source_path = tmp.path().join("source");
+        let repo_path = tmp.path().join("repo");
+        fs::create_dir(&source_path)?;
+        fs::write(source_path.join("test.txt"), "test data")?;
+
+        let config_home = tmp.path().join("config");
+        let data_home = tmp.path().join("data");
+        fs::create_dir_all(&config_home)?;
+        fs::create_dir_all(&data_home)?;
+        std::env::set_var("XDG_CONFIG_HOME", &config_home);
+        std::env::set_var("XDG_DATA_HOME", &data_home);
+
+        let pw_file = paths::password_path();
+        fs::create_dir_all(pw_file.parent().unwrap())?;
+        fs::write(&pw_file, "testpassword")?;
+        fs::set_permissions(&pw_file, fs::Permissions::from_mode(0o600))?;
+
+        let executor = crate::executor::ResticExecutor::new();
+        executor.init(repo_path.to_str().unwrap()).await?;
+
+        let config = Config {
+            global: GlobalConfig::default(),
+            backup_sets: vec![BackupSet {
+                name: "test".to_string(),
+                source: Some(source_path.to_string_lossy().to_string()),
+                sources: None,
+                target: repo_path.to_string_lossy().to_string(),
+                exclude: None,
+                debounce_seconds: Some(60), // Long debounce to verify skip
+                retention: None,
+            }],
+        };
+
+        let manager = JobManager::new(&config);
+
+        let get_test_state = || async {
+            manager
+                .get_status()
+                .await
+                .into_iter()
+                .find(|s| s.name == "test")
+                .map(|s| s.state)
+        };
+
+        // 1. Test trigger from Idle
+        manager.trigger_backup("test").await?;
+
+        // Should enter Running immediately
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let state = get_test_state().await.unwrap();
+        assert_eq!(state, JobState::Running);
+
+        // Wait for completion
+        tokio::time::sleep(Duration::from_millis(2000)).await;
+        assert_eq!(get_test_state().await.unwrap(), JobState::Idle);
+
+        // 2. Test trigger from Debouncing
+        manager.handle_file_change("test").await?;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let state = get_test_state().await.unwrap();
+        assert!(matches!(state, JobState::Debouncing { .. }));
+
+        manager.trigger_backup("test").await?;
+
+        // Should transition to Running soon (after poll)
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        let state = get_test_state().await.unwrap();
+        // It might be Running or already Idle if the backup was fast
+        assert!(matches!(state, JobState::Running | JobState::Idle));
 
         Ok(())
     }
