@@ -133,7 +133,9 @@ Communication between CLI/TUI and daemon uses JSON over Unix socket. Each messag
 | `Status` | `sets`: list of SetStatus |
 | `Snapshots` | `snapshots`: list of SnapshotInfo |
 | `BackupStarted` | `set_name`: string |
+| `BackupsTriggered` | `started`: list of string, `failed`: list of (string, string) |
 | `BackupComplete` | `set_name`, `snapshot_id`, `added_bytes`, `duration_secs` |
+| `BackupFailed` | `set_name`: string, `error`: string |
 | `MountPath` | `path`: string |
 | `PruneResult` | `set_name`: string, `reclaimed_bytes`: integer |
 | `PrunesTriggered` | `started`: list of string, `failed`: list of (string, string) |

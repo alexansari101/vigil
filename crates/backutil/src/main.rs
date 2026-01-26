@@ -178,6 +178,7 @@ async fn handle_backup(set_name: Option<String>) -> anyhow::Result<()> {
 
     let mut expected_completions = None;
     let mut completed_count = 0;
+    let mut had_failures = false;
 
     while let Ok(response) = receive_response(&mut stream).await {
         match response {
@@ -194,8 +195,11 @@ async fn handle_backup(set_name: Option<String>) -> anyhow::Result<()> {
                     for set in &started {
                         println!("Backup triggered for set '{}'.", set);
                     }
-                    for (set, error) in failed {
+                    for (set, error) in &failed {
                         eprintln!("Failed to trigger backup for set '{}': {}", set, error);
+                    }
+                    if !failed.is_empty() {
+                        had_failures = true;
                     }
                     if set_name.is_none() {
                         expected_completions = Some(started.len());
@@ -232,6 +236,7 @@ async fn handle_backup(set_name: Option<String>) -> anyhow::Result<()> {
                     error,
                 } => {
                     eprintln!("Backup failed for set '{}': {}", failed_set, error);
+                    had_failures = true;
                     completed_count += 1;
                     if let Some(expected) = expected_completions {
                         if completed_count >= expected {
@@ -258,6 +263,11 @@ async fn handle_backup(set_name: Option<String>) -> anyhow::Result<()> {
             }
             Response::Pong => {}
         }
+    }
+
+    // Exit with code 4 (restic error) if any backups failed
+    if had_failures {
+        std::process::exit(4);
     }
 
     Ok(())

@@ -8,6 +8,36 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — review: fix exit code on backup failure and update spec
+
+**What changed:**
+
+- Fixed CLI to exit with code 4 when any backup fails (per spec.md Section 12).
+- Updated spec.md to document `BackupFailed` and `BackupsTriggered` response data variants.
+- Updated `test_cli_backup_failure` to verify non-zero exit code on failure.
+
+**Why:**
+
+- Code review identified that the CLI exited with code 0 even when backups failed, violating spec and user expectations.
+- The spec was missing documentation for two `ResponseData` variants that were added during implementation.
+
+**Files affected:**
+
+- spec.md (updated)
+- crates/backutil/src/main.rs (updated)
+- crates/backutil/tests/cli_backup_test.rs (updated)
+
+**Testing notes:**
+
+- All workspace tests pass.
+- Quality checks pass: cargo test, cargo fmt --check, cargo clippy.
+
+**Dependencies/blockers:**
+
+- None.
+
+---
+
 ## [2026-01-26] — review: fix cli backup command hanging on failure
 
 **What changed:**

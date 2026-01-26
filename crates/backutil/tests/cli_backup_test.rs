@@ -200,22 +200,9 @@ async fn test_cli_backup_failure() -> Result<()> {
     // Run backup
     let (success, stdout, stderr) = env.run_cli(&["backup", "test-set"])?;
 
-    // Should still exit successfully (code 0) because the CLI handled the error by printing it,
-    // unless we decide failure means non-zero exit code.
-    // In handle_backup loop:
-    // Response::Error exits with 4 or 1.
-    // BackupFailed just prints error and loop continues until completion count met.
-    // The handle_backup function returns Ok(()) at the end.
-    // So if "backup all" runs, and one fails, it prints error but exits 0?
-    // Let's check handle_backup again.
-    // loops breaks. returns Ok(()). main calls Ok(()). Exit 0.
-    // BUT, for single set backup, explicitly requested, we probably want failure?
-    // The 'backup [SET]' command implies "make this backup". If it fails, exit code should probably be non-zero.
-    // But my current implementation of `handle_backup` in CLI doesn't track if *any* failed for the exit code.
-    // It just prints error.
-
-    // Let's verify it doesn't hang first.
-    assert!(success, "CLI failed: {}", stderr);
+    // Per spec.md Section 12, restic errors should exit with code 4.
+    // A failed backup should result in a non-zero exit code.
+    assert!(!success, "CLI should fail when backup fails");
     assert!(stdout.contains("Backup started for set 'test-set'"));
     // Stderr should contain failure message
     assert!(stderr.contains("Backup failed for set 'test-set'"));
