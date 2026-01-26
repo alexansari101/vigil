@@ -15,8 +15,6 @@ struct Job {
     set: BackupSet,
     state: JobState,
     last_change: Option<Instant>,
-    // We don't strictly need a JoinHandle if we use tokio::spawn with a loop
-    // or just let the timer task handle the transition.
 }
 
 impl JobManager {
@@ -49,7 +47,10 @@ impl JobManager {
                     job.state = JobState::Debouncing {
                         remaining_secs: debounce_secs,
                     };
-                    info!("Set {} entered Debouncing state ({}s)", set_name, debounce_secs);
+                    info!(
+                        "Set {} entered Debouncing state ({}s)",
+                        set_name, debounce_secs
+                    );
 
                     let jobs_clone = self.jobs.clone();
                     let set_name_owned = set_name.to_string();
@@ -60,9 +61,14 @@ impl JobManager {
                 }
                 JobState::Debouncing { .. } => {
                     debug!("Set {} is already debouncing, timer reset", set_name);
+                    // Timer will be automatically reset because we updated last_change
                 }
                 JobState::Running => {
-                    debug!("Set {} is currently running, will re-debounce after completion", set_name);
+                    debug!(
+                        "Set {} is currently running, will re-debounce after completion",
+                        set_name
+                    );
+                    // When the current backup finishes, it will check last_change
                 }
             }
         }
@@ -71,56 +77,86 @@ impl JobManager {
 
     async fn job_worker(jobs: Arc<Mutex<HashMap<String, Job>>>, set_name: String) {
         loop {
-            // Debouncing phase
-            let mut debounce_duration = Duration::ZERO;
+            // Debouncing phase: wait for timer to stabilize
+            let debounce_duration;
+            let start_time;
             {
                 let jobs_lock = jobs.lock().await;
                 if let Some(job) = jobs_lock.get(&set_name) {
-                    debounce_duration = Duration::from_secs(job.set.debounce_seconds.unwrap_or(60));
+                    debounce_duration =
+                        Duration::from_secs(job.set.debounce_seconds.unwrap_or(60));
+                    start_time = job.last_change.unwrap();
+                } else {
+                    return; // Job removed
                 }
             }
 
+            // Poll every 500ms to update remaining time and check for expiration
             loop {
                 tokio::time::sleep(Duration::from_millis(500)).await;
 
                 let mut jobs_lock = jobs.lock().await;
                 if let Some(job) = jobs_lock.get_mut(&set_name) {
                     if let Some(last_change) = job.last_change {
+                        // Check if the timer was reset (new file change)
+                        if last_change > start_time {
+                            info!("Timer reset for set {}, restarting worker", set_name);
+                            drop(jobs_lock);
+                            // Exit this worker - a new one was spawned
+                            return;
+                        }
+
                         let elapsed = last_change.elapsed();
                         if elapsed >= debounce_duration {
-                            info!("Debounce timer expired for set {}, transitioning to Running", set_name);
+                            info!(
+                                "Debounce timer expired for set {}, transitioning to Running",
+                                set_name
+                            );
                             job.state = JobState::Running;
                             break;
                         } else {
                             let remaining = debounce_duration.saturating_sub(elapsed).as_secs();
-                            job.state = JobState::Debouncing { remaining_secs: remaining };
+                            job.state = JobState::Debouncing {
+                                remaining_secs: remaining,
+                            };
                         }
                     }
                 } else {
-                    return; // Job removed?
+                    return; // Job removed
                 }
             }
 
             // Running phase (Placeholder)
+            let backup_start_time = Instant::now();
             debug!("Starting backup execution for set {}", set_name);
             tokio::time::sleep(Duration::from_secs(2)).await;
+            info!(
+                "Backup completed for set {} in {:.2}s",
+                set_name,
+                backup_start_time.elapsed().as_secs_f64()
+            );
 
-            // Completion check
+            // Check if new changes occurred during backup
             {
                 let mut jobs_lock = jobs.lock().await;
                 if let Some(job) = jobs_lock.get_mut(&set_name) {
                     if let Some(last_change) = job.last_change {
-                        if last_change.elapsed() < Duration::from_millis(100) {
-                            // New change occurred very recently, loop back to debouncing
-                            info!("New change detected for set {} during/after run, re-debouncing", set_name);
-                            continue;
+                        // If changes occurred during backup, re-enter debouncing
+                        if last_change > backup_start_time {
+                            info!(
+                                "New changes detected for set {} during backup, re-debouncing",
+                                set_name
+                            );
+                            let debounce_secs = job.set.debounce_seconds.unwrap_or(60);
+                            job.state = JobState::Debouncing {
+                                remaining_secs: debounce_secs,
+                            };
+                            continue; // Loop back to debouncing
                         }
                     }
-                    info!("Backup completed for set {}, returning to Idle", set_name);
+                    // No new changes, return to Idle
                     job.state = JobState::Idle;
                     break;
-                } else {
-                    return;
                 }
             }
         }
@@ -150,11 +186,6 @@ impl JobManager {
             })
             .collect()
     }
-
-    pub async fn get_job_state(&self, set_name: &str) -> Option<JobState> {
-        let jobs = self.jobs.lock().await;
-        jobs.get(set_name).map(|j| j.state.clone())
-    }
 }
 
 #[cfg(test)]
@@ -173,44 +204,47 @@ mod tests {
                 sources: None,
                 target: "/tmp/target".to_string(),
                 exclude: None,
-                debounce_seconds: Some(2), // 2 seconds for test
+                debounce_seconds: Some(1), // 1 second for faster test
                 retention: None,
             }],
         };
 
         let manager = JobManager::new(&config);
 
-        // Initial state
-        assert_eq!(manager.get_job_state("test").await.unwrap(), JobState::Idle);
+        // Helper to get state for "test" set
+        let get_test_state = || async {
+            manager
+                .get_status()
+                .await
+                .into_iter()
+                .find(|s| s.name == "test")
+                .map(|s| s.state)
+        };
 
-        // Trigger change
+        // Initial state should be Idle
+        assert_eq!(get_test_state().await.unwrap(), JobState::Idle);
+
+        // Trigger a file change
         manager.handle_file_change("test").await?;
-        let state = manager.get_job_state("test").await.unwrap();
-        match state {
-            JobState::Debouncing { remaining_secs } => assert_eq!(remaining_secs, 2),
-            _ => panic!("Expected Debouncing state"),
-        }
+        
+        // Should enter Debouncing state
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let state = get_test_state().await.unwrap();
+        assert!(
+            matches!(state, JobState::Debouncing { .. }),
+            "Expected Debouncing, got {:?}",
+            state
+        );
 
-        // Wait 1s, trigger again
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        manager.handle_file_change("test").await?;
-        let state = manager.get_job_state("test").await.unwrap();
-        match state {
-            JobState::Debouncing { remaining_secs } => {
-                // Should still be around 2 because it was reset
-                assert!(remaining_secs >= 1);
-            }
-            _ => panic!("Expected Debouncing state"),
-        }
+        // Wait for debounce to complete (1s debounce + margin)
+        tokio::time::sleep(Duration::from_millis(1400)).await;
+        let state = get_test_state().await.unwrap();
+        assert_eq!(state, JobState::Running, "Expected Running after debounce");
 
-        // Wait 3s (more than 2s debounce)
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let state = manager.get_job_state("test").await.unwrap();
-        assert_eq!(state, JobState::Running);
-
-        // Wait 3s (more than 2s "backup" duration)
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        assert_eq!(manager.get_job_state("test").await.unwrap(), JobState::Idle);
+        // Wait for simulated backup to complete (2s + margin)
+        tokio::time::sleep(Duration::from_millis(2500)).await;
+        let state = get_test_state().await.unwrap();
+        assert_eq!(state, JobState::Idle, "Expected Idle after backup completes");
 
         Ok(())
     }

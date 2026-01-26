@@ -10,12 +10,12 @@ use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 
-mod watcher;
 mod manager;
+mod watcher;
 
-use watcher::{FileWatcher, WatcherEvent};
 use manager::JobManager;
 use std::sync::Arc;
+use watcher::{FileWatcher, WatcherEvent};
 
 struct Daemon {
     pid_path: PathBuf,
