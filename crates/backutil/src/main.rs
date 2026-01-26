@@ -123,6 +123,8 @@ async fn handle_init(set_name: Option<String>) -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let mut failed = false;
+
     for set in sets_to_init {
         println!(
             "Initializing repository for set '{}' at '{}'...",
@@ -144,12 +146,18 @@ async fn handle_init(set_name: Option<String>) -> anyhow::Result<()> {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if stderr.contains("repository master key and config already initialized")
                 || stderr.contains("config already initialized")
+                || stderr.contains("config file already exists")
             {
                 println!("Set '{}' is already initialized.", set.name);
             } else {
                 eprintln!("Failed to initialize set '{}': {}", set.name, stderr.trim());
+                failed = true;
             }
         }
+    }
+
+    if failed {
+        anyhow::bail!("One or more backup sets failed to initialize.");
     }
 
     Ok(())

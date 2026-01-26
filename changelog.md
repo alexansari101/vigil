@@ -8,6 +8,39 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — review: fix cli init error handling and add integration test
+
+**What changed:**
+
+- Refactored `backutil init` to return an error if any backup set fails to initialize.
+- Added `tests/cli_init_test.rs` integration test to verify initialization and idempotency.
+- Added `tempfile` as a dev-dependency for `backutil`.
+- Expanded "already initialized" check to handle `config file already exists` error from restic.
+
+**Why:**
+
+- Code review identified that failures during initialization were not propagated to the exit code.
+- Automated testing was missing for the CLI init command.
+- Idempotency check was brittle and failed against real restic error messages.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (updated)
+- crates/backutil/Cargo.toml (updated)
+- crates/backutil/tests/cli_init_test.rs (new)
+
+**Testing notes:**
+
+- Added `cli_init_test.rs` which verifies:
+  - Successful initialization of a new repo.
+  - Idempotency (re-running init doesn't fail).
+- Verified against real restic instance via `cargo test -p backutil -- --ignored`.
+- Full workspace tests pass.
+
+**Dependencies/blockers:**
+
+- None.
+
 ## [2026-01-26] — review: fix duration formatting and add unit tests
 
 **What changed:**
