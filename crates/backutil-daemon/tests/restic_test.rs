@@ -60,7 +60,9 @@ async fn test_restic_workflow_integration() -> Result<()> {
     assert!(result.added_bytes > 0);
 
     // 3. Snapshots
-    let snapshots = executor.snapshots(repo_path.to_str().unwrap()).await?;
+    let snapshots = executor
+        .snapshots(repo_path.to_str().unwrap(), None)
+        .await?;
     assert_eq!(snapshots.len(), 1);
     assert_eq!(snapshots[0].id, result.snapshot_id);
     assert!(snapshots[0]
@@ -77,7 +79,9 @@ async fn test_restic_workflow_integration() -> Result<()> {
     executor.prune(&set_with_retention).await?;
 
     // Snapshots should still be 1
-    let snapshots = executor.snapshots(repo_path.to_str().unwrap()).await?;
+    let snapshots = executor
+        .snapshots(repo_path.to_str().unwrap(), None)
+        .await?;
     assert_eq!(snapshots.len(), 1);
 
     // 5. Password Validation: Trigger error with wrong password

@@ -520,3 +520,33 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - Unblocks: Task #11 (Daemon IPC integration test), Task #12 (Daemon mount/unmount), Task #14 (CLI skeleton).
+
+---
+
+## [2026-01-26] — review: implement limit parameter for snapshots
+
+**What changed:**
+
+- Implemented missing `limit` parameter for `Snapshots` IPC request.
+- Updated `ResticExecutor::snapshots()` to accept and use `limit` parameter via `--last N` flag.
+- Updated `JobManager::get_snapshots()` to pass limit through to executor.
+- Updated IPC handler in `main.rs` to use limit from request instead of ignoring it.
+- Fixed test calls to pass `None` for limit parameter.
+
+**Why:**
+
+- Spec compliance: spec.md Section 5 defines `limit: int or null` for Snapshots request.
+- Original implementation ignored this parameter, which would cause issues when CLI/TUI clients expect it to work.
+- Allows clients to efficiently retrieve only recent snapshots instead of full history.
+
+**Files affected:**
+
+- [executor.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/executor.rs) (updated)
+- [manager.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/manager.rs) (updated)
+- [main.rs](file:///home/alex/backup_util/crates/backutil-daemon/src/main.rs) (updated)
+- [restic_test.rs](file:///home/alex/backup_util/crates/backutil-daemon/tests/restic_test.rs) (updated)
+
+**Testing notes:**
+
+- All existing tests pass with updated signature.
+- Quality checks pass: cargo test, cargo fmt --check, cargo clippy.

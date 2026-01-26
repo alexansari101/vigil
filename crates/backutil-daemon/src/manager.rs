@@ -305,10 +305,14 @@ impl JobManager {
             .collect()
     }
 
-    pub async fn get_snapshots(&self, set_name: &str) -> Result<Vec<SnapshotInfo>> {
+    pub async fn get_snapshots(
+        &self,
+        set_name: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<SnapshotInfo>> {
         let jobs = self.jobs.lock().await;
         if let Some(job) = jobs.get(set_name) {
-            self.executor.snapshots(&job.set.target).await
+            self.executor.snapshots(&job.set.target, limit).await
         } else {
             anyhow::bail!("Unknown backup set: {}", set_name)
         }

@@ -146,18 +146,23 @@ impl ResticExecutor {
         })
     }
 
-    pub async fn snapshots(&self, target: &str) -> Result<Vec<SnapshotInfo>> {
+    pub async fn snapshots(&self, target: &str, limit: Option<usize>) -> Result<Vec<SnapshotInfo>> {
         let password_file = paths::password_path();
-        let (stdout, _) = self
-            .run_restic(vec![
-                "snapshots".to_string(),
-                "--repo".to_string(),
-                target.to_string(),
-                "--password-file".to_string(),
-                password_file.to_string_lossy().to_string(),
-                "--json".to_string(),
-            ])
-            .await?;
+        let mut args = vec![
+            "snapshots".to_string(),
+            "--repo".to_string(),
+            target.to_string(),
+            "--password-file".to_string(),
+            password_file.to_string_lossy().to_string(),
+            "--json".to_string(),
+        ];
+
+        if let Some(n) = limit {
+            args.push("--last".to_string());
+            args.push(n.to_string());
+        }
+
+        let (stdout, _) = self.run_restic(args).await?;
 
         let snapshots: Vec<ResticSnapshot> =
             serde_json::from_str(&stdout).context("Failed to parse restic snapshots JSON")?;
