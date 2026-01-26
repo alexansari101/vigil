@@ -77,7 +77,8 @@ async fn test_restic_workflow_integration() -> Result<()> {
         ..Default::default()
     });
     let reclaimed = executor.prune(&set_with_retention).await?;
-    assert!(reclaimed >= 0);
+    // Note: reclaimed is u64, always >= 0. Just verify prune succeeded.
+    let _ = reclaimed;
 
     // Snapshots should still be 1
     let snapshots = executor

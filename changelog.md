@@ -8,6 +8,37 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — review: fix global retention fallback for prune command
+
+**What changed:**
+
+- Fixed spec compliance issue: prune now falls back to global retention when per-set retention is not specified.
+- Added `global_retention` field to `JobManager` and helper method `with_effective_retention()`.
+- Fixed lint warnings in tests: removed useless `>= 0` comparisons for `u64` values.
+- Renamed internal variable from `started` to `succeeded` for clarity in multi-prune responses.
+
+**Why:**
+
+- Spec.md Section 4 defines global retention as the default, with per-set overrides. The original implementation only checked per-set retention, causing prune to fail for sets relying on global config.
+- This would have caused confusing errors for users who set retention globally (the default pattern shown in spec).
+
+**Files affected:**
+
+- crates/backutil-daemon/src/manager.rs (updated)
+- crates/backutil-daemon/tests/ipc_integration_test.rs (updated)
+- crates/backutil-daemon/tests/restic_test.rs (updated)
+
+**Testing notes:**
+
+- All workspace tests pass.
+- Quality checks pass: cargo test, cargo fmt --check, cargo clippy.
+
+**Dependencies/blockers:**
+
+- None.
+
+---
+
 ## [2026-01-26] — daemon: implement prune command with reclaimed space reporting
 
 **What changed:**

@@ -1,6 +1,6 @@
 use crate::executor::ResticExecutor;
 use anyhow::Result;
-use backutil_lib::config::{BackupSet, Config};
+use backutil_lib::config::{BackupSet, Config, RetentionPolicy};
 use backutil_lib::types::{BackupResult, JobState, SetStatus, SnapshotInfo};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -15,6 +15,8 @@ const MOUNT_GRACEFUL_EXIT_TIMEOUT_SECS: u64 = 2;
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, Job>>>,
     executor: Arc<ResticExecutor>,
+    /// Global retention policy for fallback when per-set retention is not specified.
+    global_retention: Option<RetentionPolicy>,
 }
 
 struct Job {
@@ -47,6 +49,7 @@ impl JobManager {
         Self {
             jobs: Arc::new(Mutex::new(jobs)),
             executor: Arc::new(ResticExecutor::new()),
+            global_retention: config.global.retention.clone(),
         }
     }
 
@@ -413,11 +416,13 @@ impl JobManager {
     }
 
     pub async fn prune(&self, set_name: Option<String>) -> Result<backutil_lib::ipc::ResponseData> {
-        let mut jobs = self.jobs.lock().await;
+        let jobs = self.jobs.lock().await;
         if let Some(name) = set_name {
-            if let Some(job) = jobs.get_mut(&name) {
+            if let Some(job) = jobs.get(&name) {
                 info!("Pruning set {}", name);
-                let reclaimed = self.executor.prune(&job.set).await?;
+                // Use per-set retention if available, otherwise fall back to global retention
+                let effective_set = self.with_effective_retention(&job.set);
+                let reclaimed = self.executor.prune(&effective_set).await?;
                 info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
                 Ok(backutil_lib::ipc::ResponseData::PruneResult {
                     set_name: name,
@@ -428,14 +433,16 @@ impl JobManager {
             }
         } else {
             info!("Pruning all sets");
-            let mut started = Vec::new();
+            let mut succeeded = Vec::new();
             let mut failed = Vec::new();
 
-            for (name, job) in jobs.iter_mut() {
-                match self.executor.prune(&job.set).await {
+            for (name, job) in jobs.iter() {
+                // Use per-set retention if available, otherwise fall back to global retention
+                let effective_set = self.with_effective_retention(&job.set);
+                match self.executor.prune(&effective_set).await {
                     Ok(reclaimed) => {
                         info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
-                        started.push(name.clone());
+                        succeeded.push(name.clone());
                     }
                     Err(e) => {
                         error!("Failed to prune set {}: {}", name, e);
@@ -443,8 +450,21 @@ impl JobManager {
                     }
                 }
             }
-            Ok(backutil_lib::ipc::ResponseData::PrunesTriggered { started, failed })
+            Ok(backutil_lib::ipc::ResponseData::PrunesTriggered {
+                started: succeeded,
+                failed,
+            })
         }
+    }
+
+    /// Creates a copy of the BackupSet with effective retention policy.
+    /// Falls back to global retention if per-set retention is not specified.
+    fn with_effective_retention(&self, set: &BackupSet) -> BackupSet {
+        let mut effective = set.clone();
+        if effective.retention.is_none() {
+            effective.retention = self.global_retention.clone();
+        }
+        effective
     }
 
     async fn perform_unmount(name: &str, job: &mut Job) -> Result<()> {

@@ -383,11 +383,15 @@ retention = {{ keep_last = 1 }}
     let resp: Response = serde_json::from_str(&line)?;
 
     if let Response::Ok(Some(ResponseData::PruneResult {
-        reclaimed_bytes, ..
+        set_name,
+        reclaimed_bytes,
     })) = resp
     {
-        // Since we only have one snapshot and keep_last=1, reclaimed_bytes should be 0, but the command should succeed.
-        assert!(reclaimed_bytes >= 0);
+        // Prune succeeded - since we only have one snapshot and keep_last=1,
+        // reclaimed_bytes will be 0, but the command completed successfully.
+        assert_eq!(set_name, "test-set");
+        // Note: reclaimed_bytes is u64, so no need to check >= 0
+        let _ = reclaimed_bytes;
     } else {
         panic!("Unexpected response to Prune: {:?}", resp);
     }
