@@ -26,19 +26,6 @@
 
 ---
 
-### 11. [ ] Daemon IPC integration test
-
-Create integration test that starts actual daemon, sends IPC commands via Unix socket, verifies responses and shutdown.
-
-**Acceptance criteria:**
-
-- Test spawns daemon as subprocess with temp config
-- Sends IPC requests over Unix socket (Ping, Status, Shutdown)
-- Verifies correct responses and deserialization
-- Tests daemon graceful shutdown
-- Cleans up daemon process and temp files on test completion
-- `[BLOCKED BY: #10]`
-
 ---
 
 ### 12. [ ] Daemon mount/unmount
@@ -351,4 +338,9 @@ Completed: 2026-01-26
 ### 10. [x] Daemon status and snapshots
 
 Branch: `feature/daemon-status-snapshots`
+Completed: 2026-01-26
+
+### 11. [x] Daemon IPC integration test
+
+Branch: `feature/daemon-ipc-integration-test`
 Completed: 2026-01-26

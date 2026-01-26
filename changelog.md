@@ -550,3 +550,33 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 - All existing tests pass with updated signature.
 - Quality checks pass: cargo test, cargo fmt --check, cargo clippy.
+
+---
+
+## [2026-01-26] — daemon: implement IPC integration tests
+
+**What changed:**
+
+- Created `crates/backutil-daemon/tests/ipc_integration_test.rs`.
+- Implemented `TestDaemon` helper to spawn daemon with temporary config and isolated environment (XDG environment variables).
+- Added test cases for `Ping`, `Status`, and `Shutdown` IPC requests.
+- Verified graceful shutdown and cleanup of PID/socket files.
+
+**Why:**
+
+- Implements Task #11 and verifies end-to-end IPC communication between client and daemon.
+- Ensures daemon lifecycle management (startup, IPC handling, shutdown) is robust.
+
+**Files affected:**
+
+- [ipc_integration_test.rs](file:///home/alex/backup_util/crates/backutil-daemon/tests/ipc_integration_test.rs) (new)
+
+**Testing notes:**
+
+- Verified via `cargo test --test ipc_integration_test`.
+- Tests run in an isolated environment using temporary directories.
+- Verified that `Shutdown` cleanly stops the process and removes files.
+
+**Dependencies/blockers:**
+
+- Unblocks: CLI skeleton implementation.
