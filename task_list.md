@@ -34,18 +34,6 @@
 
 ---
 
-### 17. [ ] CLI mount/unmount commands
-
-Implement `backutil mount <SET>` and `backutil unmount [SET]`.
-
-**Acceptance criteria:**
-
-- `mount` shows interactive snapshot picker (or uses latest)
-- Prints mount path on success
-- `unmount` with no args unmounts all
-- Clear error messages for edge cases
-- `[BLOCKED BY: #12, #14]`
-
 ---
 
 ### 18. [ ] CLI prune command
@@ -310,3 +298,8 @@ Completed: 2026-01-26
 Branch: `feature/cli-backup`
 Completed: 2026-01-26
 Review Fixes: 2026-01-26 (Fix CLI hang on backup failure)
+
+### 17. [x] CLI mount/unmount commands
+
+Branch: `feature/cli-mount-unmount`
+Completed: 2026-01-26

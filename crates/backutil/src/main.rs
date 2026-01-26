@@ -79,6 +79,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::Status => {
             handle_status().await?;
         }
+        Commands::Mount { set, snapshot_id } => {
+            handle_mount(set, snapshot_id).await?;
+        }
+        Commands::Unmount { set } => {
+            handle_unmount(set).await?;
+        }
         _ => {
             println!("Command not yet implemented.");
         }
@@ -303,6 +309,131 @@ async fn handle_status() -> anyhow::Result<()> {
         }
         Response::Pong => {
             println!("Unexpected Pong response.");
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_mount(set_name: String, mut snapshot_id: Option<String>) -> anyhow::Result<()> {
+    // If no snapshot ID provided and stderr is a TTY, show interactive picker
+    use std::io::IsTerminal;
+    if snapshot_id.is_none() && std::io::stderr().is_terminal() {
+        snapshot_id = pick_snapshot(&set_name).await?;
+        if snapshot_id.is_none() {
+            println!("No snapshot selected.");
+            return Ok(());
+        }
+    }
+
+    let mut stream = connect_to_daemon().await?;
+    send_request(
+        &mut stream,
+        Request::Mount {
+            set_name,
+            snapshot_id,
+        },
+    )
+    .await?;
+
+    let response = receive_response(&mut stream).await?;
+    match response {
+        Response::Ok(Some(ResponseData::MountPath { path })) => {
+            println!("Snapshot mounted at: {}", path);
+        }
+        Response::Error { code, message } => {
+            eprintln!("Error mounting snapshot ({}): {}", code, message);
+            std::process::exit(1);
+        }
+        _ => {
+            println!("Unexpected response from daemon.");
+        }
+    }
+
+    Ok(())
+}
+
+async fn pick_snapshot(set_name: &str) -> anyhow::Result<Option<String>> {
+    let mut stream = connect_to_daemon().await?;
+    send_request(
+        &mut stream,
+        Request::Snapshots {
+            set_name: set_name.to_string(),
+            limit: Some(10), // Show last 10 snapshots
+        },
+    )
+    .await?;
+
+    let response = receive_response(&mut stream).await?;
+    let snapshots = match response {
+        Response::Ok(Some(ResponseData::Snapshots { snapshots })) => snapshots,
+        Response::Error { code, message } => {
+            anyhow::bail!("Failed to fetch snapshots ({}): {}", code, message);
+        }
+        _ => anyhow::bail!("Unexpected response from daemon when fetching snapshots."),
+    };
+
+    if snapshots.is_empty() {
+        println!("No snapshots found for set '{}'.", set_name);
+        return Ok(None);
+    }
+
+    println!("Recent snapshots for set '{}':", set_name);
+    for (i, snap) in snapshots.iter().enumerate() {
+        println!(
+            "[{}] {} - {} ({})",
+            i + 1,
+            snap.short_id,
+            snap.timestamp
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M:%S"),
+            snap.paths
+                .iter()
+                .map(|p| p.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+
+    print!("Select snapshot [1-{}]: ", snapshots.len());
+    use std::io::Write;
+    std::io::stdout().flush()?;
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    let choice: usize = match input.trim().parse::<usize>() {
+        Ok(n) if n > 0 && n <= snapshots.len() => n - 1,
+        _ => return Ok(None),
+    };
+
+    Ok(Some(snapshots[choice].id.clone()))
+}
+
+async fn handle_unmount(set_name: Option<String>) -> anyhow::Result<()> {
+    let mut stream = connect_to_daemon().await?;
+    send_request(
+        &mut stream,
+        Request::Unmount {
+            set_name: set_name.clone(),
+        },
+    )
+    .await?;
+
+    let response = receive_response(&mut stream).await?;
+    match response {
+        Response::Ok(_) => {
+            if let Some(name) = set_name {
+                println!("Successfully unmounted set '{}'.", name);
+            } else {
+                println!("Successfully unmounted all sets.");
+            }
+        }
+        Response::Error { code, message } => {
+            eprintln!("Error unmounting ({}): {}", code, message);
+            std::process::exit(1);
+        }
+        _ => {
+            println!("Unexpected response from daemon.");
         }
     }
 

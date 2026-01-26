@@ -8,6 +8,43 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — feature: cli mount/unmount commands
+
+**What changed:**
+
+- Implemented `backutil mount <SET> [SNAPSHOT_ID]` command.
+- Added interactive snapshot picker for `mount` when no ID is provided and stderr is a TTY.
+- Implemented `backutil unmount [SET]` command (supports specific set or all).
+- Integrated with daemon IPC for mount/unmount operations.
+- Added integration test `cli_mount_test.rs` covering mount and unmount flows.
+
+**Why:**
+
+- Implements Task #17 and completes the CLI's core functionality for browsing backups.
+- Enables users to easily access their backed-up files via FUSE mounts.
+- Interactive picker improves usability for users who don't remember snapshot IDs.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+- crates/backutil/tests/cli_mount_test.rs (new)
+
+**Testing notes:**
+
+- Added `cli_mount_test.rs` covering:
+  - Repository initialization.
+  - Snapshot creation (via backup).
+  - Mounting latest snapshot.
+  - Verifying mount path exists.
+  - Unmounting specific set.
+- All integration tests pass: `cargo test --test cli_mount_test -- --ignored`.
+
+**Dependencies/blockers:**
+
+- Unblocks: TUI interactive commands (Task #25).
+
+---
+
 ## [2026-01-26] — review: fix exit code on backup failure and update spec
 
 **What changed:**
