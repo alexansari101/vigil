@@ -53,6 +53,8 @@ Connect watcher → debounce → executor. Handle `Backup` IPC request. Track jo
 - `Backup` IPC request triggers immediate backup
 - Concurrent backup requests for same set are queued/rejected
 - Sends `notify-send` on backup failure
+- Records actual backup duration and added bytes in BackupResult
+- Properly updates job state to Idle or Error after backup completion
 - `[BLOCKED BY: #7, #8]`
 
 ---
