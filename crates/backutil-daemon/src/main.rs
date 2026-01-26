@@ -160,110 +160,135 @@ async fn handle_client(
     let (reader, mut writer) = stream.split();
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
+    let mut event_rx = job_manager.subscribe();
 
-    while reader.read_line(&mut line).await? > 0 {
-        let request: Request = match serde_json::from_str(&line) {
-            Ok(req) => req,
-            Err(e) => {
-                let err_resp = Response::Error {
-                    code: "InvalidRequest".into(),
-                    message: format!("Failed to parse JSON: {}", e),
+    loop {
+        tokio::select! {
+            read_res = reader.read_line(&mut line) => {
+                let bytes_read = read_res?;
+                if bytes_read == 0 {
+                    break;
+                }
+
+                let request: Request = match serde_json::from_str(&line) {
+                    Ok(req) => req,
+                    Err(e) => {
+                        let err_resp = Response::Error {
+                            code: "InvalidRequest".into(),
+                            message: format!("Failed to parse JSON: {}", e),
+                        };
+                        let json = serde_json::to_string(&err_resp)? + "\n";
+                        writer.write_all(json.as_bytes()).await?;
+                        line.clear();
+                        continue;
+                    }
                 };
-                let json = serde_json::to_string(&err_resp)? + "\n";
-                writer.write_all(json.as_bytes()).await?;
+
                 line.clear();
-                continue;
-            }
-        };
+                let is_shutdown = matches!(request, Request::Shutdown);
 
-        line.clear();
-        let is_shutdown = matches!(request, Request::Shutdown);
-
-        let response = match request {
-            Request::Ping => Response::Pong,
-            Request::Status => {
-                let sets = job_manager.get_status().await;
-                Response::Ok(Some(ResponseData::Status { sets }))
-            }
-            Request::Shutdown => {
-                info!("Shutdown requested via IPC");
-                // Send shutdown signal before responding
-                let _ = shutdown_tx.send(());
-                Response::Ok(None)
-            }
-            Request::Backup { set_name } => {
-                match set_name {
-                    Some(name) => match job_manager.trigger_backup(&name).await {
-                        Ok(_) => Response::Ok(Some(ResponseData::BackupStarted { set_name: name })),
+                let response = match request {
+                    Request::Ping => Response::Pong,
+                    Request::Status => {
+                        let sets = job_manager.get_status().await;
+                        Response::Ok(Some(ResponseData::Status { sets }))
+                    }
+                    Request::Shutdown => {
+                        info!("Shutdown requested via IPC");
+                        // Send shutdown signal before responding
+                        let _ = shutdown_tx.send(());
+                        Response::Ok(None)
+                    }
+                    Request::Backup { set_name } => {
+                        match set_name {
+                            Some(name) => match job_manager.trigger_backup(&name).await {
+                                Ok(_) => Response::Ok(Some(ResponseData::BackupStarted { set_name: name })),
+                                Err(e) => Response::Error {
+                                    code: "BackupFailed".into(),
+                                    message: e.to_string(),
+                                },
+                            },
+                            None => {
+                                // Backup all sets
+                                let statuses = job_manager.get_status().await;
+                                let mut started = Vec::new();
+                                let mut failed = Vec::new();
+                                for status in statuses {
+                                    match job_manager.trigger_backup(&status.name).await {
+                                        Ok(_) => started.push(status.name),
+                                        Err(e) => {
+                                            warn!(
+                                                "Failed to trigger backup for set {}: {}",
+                                                status.name, e
+                                            );
+                                            failed.push((status.name, e.to_string()));
+                                        }
+                                    }
+                                }
+                                Response::Ok(Some(ResponseData::BackupsTriggered { started, failed }))
+                            }
+                        }
+                    }
+                    Request::Snapshots { set_name, limit } => {
+                        match job_manager.get_snapshots(&set_name, limit).await {
+                            Ok(snapshots) => Response::Ok(Some(ResponseData::Snapshots { snapshots })),
+                            Err(e) => Response::Error {
+                                code: "ResticError".into(),
+                                message: e.to_string(),
+                            },
+                        }
+                    }
+                    Request::Mount {
+                        set_name,
+                        snapshot_id,
+                    } => match job_manager.mount(&set_name, snapshot_id).await {
+                        Ok(path) => Response::Ok(Some(ResponseData::MountPath {
+                            path: path.to_string_lossy().to_string(),
+                        })),
                         Err(e) => Response::Error {
-                            code: "BackupFailed".into(),
+                            code: "MountFailed".into(),
                             message: e.to_string(),
                         },
                     },
-                    None => {
-                        // Backup all sets
-                        let statuses = job_manager.get_status().await;
-                        let mut started = Vec::new();
-                        let mut failed = Vec::new();
-                        for status in statuses {
-                            match job_manager.trigger_backup(&status.name).await {
-                                Ok(_) => started.push(status.name),
-                                Err(e) => {
-                                    warn!(
-                                        "Failed to trigger backup for set {}: {}",
-                                        status.name, e
-                                    );
-                                    failed.push((status.name, e.to_string()));
-                                }
-                            }
-                        }
-                        Response::Ok(Some(ResponseData::BackupsTriggered { started, failed }))
+                    Request::Unmount { set_name } => match job_manager.unmount(set_name).await {
+                        Ok(_) => Response::Ok(None),
+                        Err(e) => Response::Error {
+                            code: "ResticError".into(),
+                            message: e.to_string(),
+                        },
+                    },
+                    Request::Prune { set_name } => match job_manager.prune(set_name).await {
+                        Ok(data) => Response::Ok(Some(data)),
+                        Err(e) => Response::Error {
+                            code: "ResticError".into(),
+                            message: e.to_string(),
+                        },
+                    },
+                };
+
+                let json = serde_json::to_string(&response)? + "\n";
+                writer.write_all(json.as_bytes()).await?;
+
+                // If shutdown was requested, close connection after responding
+                if is_shutdown {
+                    break;
+                }
+            }
+            event_res = event_rx.recv() => {
+                match event_res {
+                    Ok(response) => {
+                        let json = serde_json::to_string(&response)? + "\n";
+                        writer.write_all(json.as_bytes()).await?;
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        warn!("Client lagged behind on broadcast events by {}", n);
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        // Job manager was dropped, should only happen on shutdown
+                        break;
                     }
                 }
             }
-            Request::Snapshots { set_name, limit } => {
-                match job_manager.get_snapshots(&set_name, limit).await {
-                    Ok(snapshots) => Response::Ok(Some(ResponseData::Snapshots { snapshots })),
-                    Err(e) => Response::Error {
-                        code: "ResticError".into(),
-                        message: e.to_string(),
-                    },
-                }
-            }
-            Request::Mount {
-                set_name,
-                snapshot_id,
-            } => match job_manager.mount(&set_name, snapshot_id).await {
-                Ok(path) => Response::Ok(Some(ResponseData::MountPath {
-                    path: path.to_string_lossy().to_string(),
-                })),
-                Err(e) => Response::Error {
-                    code: "MountFailed".into(),
-                    message: e.to_string(),
-                },
-            },
-            Request::Unmount { set_name } => match job_manager.unmount(set_name).await {
-                Ok(_) => Response::Ok(None),
-                Err(e) => Response::Error {
-                    code: "ResticError".into(),
-                    message: e.to_string(),
-                },
-            },
-            Request::Prune { set_name } => match job_manager.prune(set_name).await {
-                Ok(data) => Response::Ok(Some(data)),
-                Err(e) => Response::Error {
-                    code: "ResticError".into(),
-                    message: e.to_string(),
-                },
-            },
-        };
-
-        let json = serde_json::to_string(&response)? + "\n";
-        writer.write_all(json.as_bytes()).await?;
-
-        // If shutdown was requested, close connection after responding
-        if is_shutdown {
-            break;
         }
     }
 

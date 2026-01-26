@@ -1,11 +1,12 @@
 use crate::executor::ResticExecutor;
 use anyhow::Result;
 use backutil_lib::config::{BackupSet, Config, RetentionPolicy};
+use backutil_lib::ipc::{Response, ResponseData};
 use backutil_lib::types::{BackupResult, JobState, SetStatus, SnapshotInfo};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 use tokio::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 
@@ -17,6 +18,8 @@ pub struct JobManager {
     executor: Arc<ResticExecutor>,
     /// Global retention policy for fallback when per-set retention is not specified.
     global_retention: Option<RetentionPolicy>,
+    /// Broadcast sender for async events (e.g. backup completion)
+    event_tx: broadcast::Sender<Response>,
 }
 
 struct Job {
@@ -46,11 +49,17 @@ impl JobManager {
                 },
             );
         }
+        let (event_tx, _) = broadcast::channel(100);
         Self {
             jobs: Arc::new(Mutex::new(jobs)),
             executor: Arc::new(ResticExecutor::new()),
             global_retention: config.global.retention.clone(),
+            event_tx,
         }
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<Response> {
+        self.event_tx.subscribe()
     }
 
     pub async fn handle_file_change(&self, set_name: &str) -> Result<()> {
@@ -73,9 +82,10 @@ impl JobManager {
                     let jobs_clone = self.jobs.clone();
                     let executor_clone = self.executor.clone();
                     let set_name_owned = set_name.to_string();
-
+                    let event_tx = self.event_tx.clone();
                     tokio::spawn(async move {
-                        Self::job_worker(jobs_clone, executor_clone, set_name_owned).await;
+                        Self::job_worker(jobs_clone, executor_clone, set_name_owned, event_tx)
+                            .await;
                     });
                 }
                 JobState::Debouncing { .. } => {
@@ -117,9 +127,11 @@ impl JobManager {
                     let jobs_clone = self.jobs.clone();
                     let executor_clone = self.executor.clone();
                     let set_name_owned = set_name.to_string();
+                    let event_tx = self.event_tx.clone();
 
                     tokio::spawn(async move {
-                        Self::job_worker(jobs_clone, executor_clone, set_name_owned).await;
+                        Self::job_worker(jobs_clone, executor_clone, set_name_owned, event_tx)
+                            .await;
                     });
                 }
             }
@@ -133,6 +145,7 @@ impl JobManager {
         jobs: Arc<Mutex<HashMap<String, Job>>>,
         executor: Arc<ResticExecutor>,
         set_name: String,
+        event_tx: broadcast::Sender<Response>,
     ) {
         loop {
             // Debouncing phase: wait for timer to stabilize
@@ -265,6 +278,15 @@ impl JobManager {
                             }
                         }
                         job.state = JobState::Idle;
+
+                        // Broadcast completion event
+                        let _ = event_tx.send(Response::Ok(Some(ResponseData::BackupComplete {
+                            set_name: set_name.clone(),
+                            snapshot_id: backup_result.snapshot_id.clone(),
+                            added_bytes: backup_result.added_bytes,
+                            duration_secs: backup_result.duration_secs,
+                        })));
+
                         break;
                     }
                 }

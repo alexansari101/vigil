@@ -73,6 +73,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Init { set } => {
             handle_init(set).await?;
         }
+        Commands::Backup { set } => {
+            handle_backup(set).await?;
+        }
         Commands::Status => {
             handle_status().await?;
         }
@@ -161,6 +164,99 @@ async fn handle_init(set_name: Option<String>) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+async fn handle_backup(set_name: Option<String>) -> anyhow::Result<()> {
+    let mut stream = connect_to_daemon().await?;
+    send_request(
+        &mut stream,
+        Request::Backup {
+            set_name: set_name.clone(),
+        },
+    )
+    .await?;
+
+    let mut expected_completions = None;
+    let mut completed_count = 0;
+
+    while let Ok(response) = receive_response(&mut stream).await {
+        match response {
+            Response::Ok(Some(data)) => match data {
+                ResponseData::BackupStarted {
+                    set_name: started_set,
+                } => {
+                    println!("Backup started for set '{}'.", started_set);
+                    if set_name.is_some() {
+                        expected_completions = Some(1);
+                    }
+                }
+                ResponseData::BackupsTriggered { started, failed } => {
+                    for set in &started {
+                        println!("Backup triggered for set '{}'.", set);
+                    }
+                    for (set, error) in failed {
+                        eprintln!("Failed to trigger backup for set '{}': {}", set, error);
+                    }
+                    if set_name.is_none() {
+                        expected_completions = Some(started.len());
+                    }
+                }
+                ResponseData::BackupComplete {
+                    set_name: completed_set_name,
+                    snapshot_id,
+                    added_bytes,
+                    duration_secs,
+                } => {
+                    println!(
+                        "Backup complete for set '{}': snapshot {}, {} added in {:.1}s",
+                        completed_set_name,
+                        snapshot_id,
+                        format_size(added_bytes),
+                        duration_secs
+                    );
+
+                    completed_count += 1;
+                    if let Some(expected) = expected_completions {
+                        if completed_count >= expected {
+                            break;
+                        }
+                    } else if let Some(target) = &set_name {
+                        // Fallback if we somehow missed BackupStarted but got BackupComplete for the requested set
+                        if target == &completed_set_name {
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            },
+            Response::Ok(None) => {}
+            Response::Error { code, message } => {
+                eprintln!("Error from daemon ({}): {}", code, message);
+                if code == backutil_lib::ipc::error_codes::RESTIC_ERROR
+                    || code == backutil_lib::ipc::error_codes::BACKUP_FAILED
+                {
+                    std::process::exit(4);
+                } else {
+                    std::process::exit(1);
+                }
+            }
+            Response::Pong => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KiB", bytes as f64 / 1024.0)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MiB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.1} GiB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
 }
 
 async fn handle_status() -> anyhow::Result<()> {

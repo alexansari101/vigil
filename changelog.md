@@ -8,6 +8,40 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — feature: cli backup command
+
+**What changed:**
+
+- Implemented `backutil backup [SET]` command in the CLI.
+- Added a broadcast mechanism to the daemon's `JobManager` for backup completion events.
+- Updated the daemon's client handler to forward async broadcast events to clients.
+- Refined the CLI to wait for all triggered backups to complete before exiting.
+- Added integration tests for both single-set and multi-set backup scenarios.
+
+**Why:**
+
+- To provide users with a way to manually trigger and monitor backups from the CLI, fulfilling a core requirement of the utility.
+- To ensure the CLI provides accurate progress and completion information by listening to async updates from the daemon.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+- crates/backutil-daemon/src/main.rs (modified)
+- crates/backutil-daemon/src/manager.rs (modified)
+- crates/backutil/tests/cli_backup_test.rs (new)
+
+**Testing notes:**
+
+- Added integration test `cli_backup_test.rs` covering single-set and multi-set scenarios.
+- Verified CLI exit codes (code 4 on restic failure).
+- Verified human-readable size output.
+
+**Dependencies/blockers:**
+
+- Unblocks: TUI implementation for manual backup triggers.
+
+---
+
 ## [2026-01-26] — review: fix cli init error handling and add integration test
 
 **What changed:**

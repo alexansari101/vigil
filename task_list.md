@@ -32,17 +32,6 @@
 
 ---
 
-### 16. [ ] CLI backup command
-
-Implement `backutil backup [SET]` to trigger immediate backup via daemon.
-
-**Acceptance criteria:**
-
-- Sends `Backup` request to daemon
-- Shows progress/completion message
-- Exits with code 4 on restic error
-- `[BLOCKED BY: #9, #14]`
-
 ---
 
 ### 17. [ ] CLI mount/unmount commands
@@ -315,3 +304,9 @@ Completed: 2026-01-26
 Branch: `feature/cli-init`
 Review Fixes: 2026-01-26 (Error handling, Integration Test)
 Completed: 2026-01-26
+
+### 16. [x] CLI backup command
+
+Branch: `feature/cli-backup`
+Completed: 2026-01-26
+
