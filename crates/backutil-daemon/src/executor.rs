@@ -11,6 +11,10 @@ use std::time::Duration;
 use tokio::process::{Child, Command};
 use tracing::{debug, error, info};
 
+/// How long to wait after spawning restic mount to check for immediate failures
+/// (e.g., invalid snapshot ID, mount point busy, missing fusermount3)
+const MOUNT_STARTUP_CHECK_MS: u64 = 200;
+
 #[derive(Default)]
 pub struct ResticExecutor;
 
@@ -262,7 +266,7 @@ impl ResticExecutor {
         let mut child = cmd.spawn().context("Failed to spawn restic mount")?;
 
         // Give it a moment to see if it fails immediately (e.g. bad snapshot ID or mount point busy)
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(MOUNT_STARTUP_CHECK_MS)).await;
         match child.try_wait() {
             Ok(Some(status)) if !status.success() => {
                 let mut stderr = String::new();

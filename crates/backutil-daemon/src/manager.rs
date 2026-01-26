@@ -9,6 +9,9 @@ use tokio::sync::Mutex;
 use tokio::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 
+/// How long to wait for restic mount process to exit gracefully after fusermount3 -u
+const MOUNT_GRACEFUL_EXIT_TIMEOUT_SECS: u64 = 2;
+
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, Job>>>,
     executor: Arc<ResticExecutor>,
@@ -283,6 +286,10 @@ impl JobManager {
         }
     }
 
+    /// Get status for all backup sets.
+    ///
+    /// **Note**: This function has side effects - it monitors mount processes and updates
+    /// `is_mounted` state if a mount process has died unexpectedly.
     pub async fn get_status(&self) -> Vec<SetStatus> {
         let mut jobs = self.jobs.lock().await;
 
@@ -362,6 +369,12 @@ impl JobManager {
             let mount_path = backutil_lib::paths::mount_path(set_name);
             if !mount_path.exists() {
                 std::fs::create_dir_all(&mount_path)?;
+                // Set restrictive permissions for sensitive backup data
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&mount_path, std::fs::Permissions::from_mode(0o700))?;
+                }
             }
 
             info!("Mounting set {} at {:?}", set_name, mount_path);
@@ -404,6 +417,14 @@ impl JobManager {
             return Ok(());
         }
 
+        // Warn if unmounting during an active backup
+        if matches!(job.state, JobState::Running) {
+            warn!(
+                "Unmounting set {} while backup is running - this may cause the backup to fail",
+                name
+            );
+        }
+
         info!("Unmounting set {}", name);
         let mount_path = backutil_lib::paths::mount_path(name);
 
@@ -433,7 +454,12 @@ impl JobManager {
             // Even if fusermount3 succeeded, we should clean up the restic process
             if let Some(mut child) = job.mount_process.take() {
                 // Restic should exit on its own when unmounted, but we'll wait a bit then kill if needed
-                match tokio::time::timeout(Duration::from_secs(2), child.wait()).await {
+                match tokio::time::timeout(
+                    Duration::from_secs(MOUNT_GRACEFUL_EXIT_TIMEOUT_SECS),
+                    child.wait(),
+                )
+                .await
+                {
                     Ok(_) => debug!("Restic mount process for {} exited cleanly", name),
                     Err(_) => {
                         debug!("Restic mount process for {} did not exit, killing", name);

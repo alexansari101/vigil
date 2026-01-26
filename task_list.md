@@ -26,10 +26,6 @@
 
 ---
 
----
-
----
-
 ### 13. [ ] Daemon prune
 
 Implement `Prune` IPC handler. Run retention policy cleanup.

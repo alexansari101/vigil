@@ -6,6 +6,38 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — review: second pass on mount/unmount edge cases
+
+**What changed:**
+
+- Added named constants `MOUNT_STARTUP_CHECK_MS` and `MOUNT_GRACEFUL_EXIT_TIMEOUT_SECS` to replace magic numbers.
+- Set mount directory permissions to 0700 for security (sensitive backup data per PRD).
+- Added documentation to `get_status()` explaining its side effects (updates mount state).
+- Added warning when unmounting during an active backup to help debug potential backup failures.
+
+**Why:**
+
+- Second senior review identified security issue: mount directories had default permissions (potentially world-readable).
+- Magic timeout values (200ms, 2s) were unexplained, reducing maintainability.
+- `get_status()` function name suggested read-only behavior but actually modifies state - needs documentation.
+- Unmounting during backup could cause failures without any warning to operators.
+
+**Files affected:**
+
+- crates/backutil-daemon/src/executor.rs (updated)
+- crates/backutil-daemon/src/manager.rs (updated)
+
+**Testing notes:**
+
+- All workspace tests pass.
+- Quality checks pass: cargo test, cargo fmt --check, cargo clippy.
+
+**Dependencies/blockers:**
+
+- None.
+
+---
+
 ## [2024-01-24] — Project initialization
 
 **What changed:**
