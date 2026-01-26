@@ -65,6 +65,16 @@ pub enum ResponseData {
     },
     /// The local path where a snapshot was mounted.
     MountPath { path: String },
+    /// Result of a prune operation for a single set.
+    PruneResult {
+        set_name: String,
+        reclaimed_bytes: u64,
+    },
+    /// Result of triggering prunes for multiple sets.
+    PrunesTriggered {
+        started: Vec<String>,
+        failed: Vec<(String, String)>,
+    },
 }
 
 /// Common error codes used in IPC error responses.

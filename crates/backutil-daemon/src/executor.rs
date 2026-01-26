@@ -184,7 +184,7 @@ impl ResticExecutor {
             .collect())
     }
 
-    pub async fn prune(&self, set: &BackupSet) -> Result<()> {
+    pub async fn prune(&self, set: &BackupSet) -> Result<u64> {
         info!("Pruning repository for set: {}", set.name);
         let password_file = paths::password_path();
 
@@ -232,8 +232,14 @@ impl ResticExecutor {
             args.push(monthly.to_string());
         }
 
-        self.run_restic(args).await?;
-        Ok(())
+        let (stdout, _) = self.run_restic(args).await?;
+
+        // Parse reclaimed bytes from text output.
+        // Example: "total bytes reclaimed: 1.23 MiB" or "reclaimed 123 bytes"
+        // Since restic output can vary, we'll look for "reclaimed" and try to parse the number.
+        // A more robust way is to look for "total bytes reclaimed: "
+        let reclaimed = parse_reclaimed_bytes(&stdout);
+        Ok(reclaimed)
     }
 
     pub async fn mount(
@@ -279,4 +285,43 @@ impl ResticExecutor {
             _ => Ok(child),
         }
     }
+}
+
+fn parse_reclaimed_bytes(stdout: &str) -> u64 {
+    for line in stdout.lines() {
+        if line.contains("total bytes reclaimed:") {
+            if let Some(val_str) = line.split(':').nth(1) {
+                return parse_restic_size(val_str.trim());
+            }
+        }
+    }
+    0
+}
+
+fn parse_restic_size(s: &str) -> u64 {
+    let parts: Vec<&str> = s.split_whitespace().collect();
+    if parts.is_empty() {
+        return 0;
+    }
+
+    let val: f64 = parts[0].parse().unwrap_or(0.0);
+    if parts.len() < 2 {
+        return val as u64;
+    }
+
+    let unit = parts[1].to_lowercase();
+    let multiplier = match unit.as_str() {
+        "kib" | "k" => 1024.0,
+        "mib" | "m" => 1024.0 * 1024.0,
+        "gib" | "g" => 1024.0 * 1024.0 * 1024.0,
+        "tib" | "t" => 1024.0 * 1024.0 * 1024.0 * 1024.0,
+        _ => 1.0,
+    };
+
+    // Special case for bytes
+    if unit == "b" || unit == "bytes" {
+        return val as u64;
+    }
+
+    (val * multiplier) as u64
 }

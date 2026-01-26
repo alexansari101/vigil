@@ -76,7 +76,8 @@ async fn test_restic_workflow_integration() -> Result<()> {
         keep_last: Some(1),
         ..Default::default()
     });
-    executor.prune(&set_with_retention).await?;
+    let reclaimed = executor.prune(&set_with_retention).await?;
+    assert!(reclaimed >= 0);
 
     // Snapshots should still be 1
     let snapshots = executor

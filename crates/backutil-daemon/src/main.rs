@@ -249,11 +249,12 @@ async fn handle_client(
                     message: e.to_string(),
                 },
             },
-            Request::Prune {
-                set_name: _set_name,
-            } => Response::Error {
-                code: "NotImplemented".into(),
-                message: "Prune not implemented yet".into(),
+            Request::Prune { set_name } => match job_manager.prune(set_name).await {
+                Ok(data) => Response::Ok(Some(data)),
+                Err(e) => Response::Error {
+                    code: "ResticError".into(),
+                    message: e.to_string(),
+                },
             },
         };
 

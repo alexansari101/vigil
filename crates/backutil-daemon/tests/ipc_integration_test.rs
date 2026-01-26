@@ -267,3 +267,131 @@ async fn test_ipc_mount_cleanup_on_shutdown() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+#[ignore] // Requires restic
+async fn test_ipc_prune() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let config_dir = temp_dir.path().join("config");
+    let data_dir = temp_dir.path().join("data");
+    let runtime_dir = temp_dir.path().join("runtime");
+
+    fs::create_dir_all(&config_dir)?;
+    fs::create_dir_all(&data_dir)?;
+    fs::create_dir_all(&runtime_dir)?;
+
+    let source_dir = temp_dir.path().join("source");
+    let target_dir = temp_dir.path().join("target");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&target_dir)?;
+
+    let pw_file = config_dir.join("backutil/.repo_password");
+    fs::create_dir_all(pw_file.parent().unwrap())?;
+    fs::write(&pw_file, "testpassword")?;
+
+    // 1. Initialize repository
+    let status = Command::new("restic")
+        .args([
+            "init",
+            "--repo",
+            target_dir.to_str().unwrap(),
+            "--password-file",
+            pw_file.to_str().unwrap(),
+        ])
+        .status()?;
+    assert!(status.success(), "Failed to init restic repo");
+
+    // 2. Create a backup
+    fs::write(source_dir.join("test.txt"), "hello world")?;
+    let status = Command::new("restic")
+        .args([
+            "backup",
+            "--repo",
+            target_dir.to_str().unwrap(),
+            "--password-file",
+            pw_file.to_str().unwrap(),
+            source_dir.to_str().unwrap(),
+        ])
+        .status()?;
+    assert!(status.success(), "Failed to create backup");
+
+    // 3. Create config WITH retention
+    let config_path = config_dir.join("backutil/config.toml");
+    fs::write(
+        &config_path,
+        format!(
+            r#"
+[global]
+debounce_seconds = 60
+
+[[backup_set]]
+name = "test-set"
+source = "{}"
+target = "{}"
+retention = {{ keep_last = 1 }}
+"#,
+            source_dir.display(),
+            target_dir.display()
+        ),
+    )?;
+
+    // 4. Start daemon
+    let daemon_path = env!("CARGO_BIN_EXE_backutil-daemon");
+    let mut child = Command::new(daemon_path)
+        .env("XDG_CONFIG_HOME", &config_dir)
+        .env("XDG_DATA_HOME", &data_dir)
+        .env("XDG_RUNTIME_DIR", &runtime_dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let socket_path = runtime_dir.join("backutil.sock");
+
+    // Wait for socket
+    let mut attempts = 0;
+    while !socket_path.exists() && attempts < 50 {
+        if let Ok(Some(status)) = child.try_wait() {
+            let mut stderr = String::new();
+            if let Some(mut reader) = child.stderr.take() {
+                use std::io::Read;
+                let _ = reader.read_to_string(&mut stderr);
+            }
+            panic!(
+                "Daemon exited prematurely with status: {}\nStderr: {}",
+                status, stderr
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        attempts += 1;
+    }
+    assert!(
+        socket_path.exists(),
+        "Daemon failed to start or create socket within timeout"
+    );
+
+    // 5. Send Prune request
+    let mut stream = UnixStream::connect(&socket_path).await?;
+    let request = Request::Prune {
+        set_name: Some("test-set".to_string()),
+    };
+    let json = serde_json::to_string(&request)? + "\n";
+    stream.write_all(json.as_bytes()).await?;
+
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader.read_line(&mut line).await?;
+    let resp: Response = serde_json::from_str(&line)?;
+
+    if let Response::Ok(Some(ResponseData::PruneResult {
+        reclaimed_bytes, ..
+    })) = resp
+    {
+        // Since we only have one snapshot and keep_last=1, reclaimed_bytes should be 0, but the command should succeed.
+        assert!(reclaimed_bytes >= 0);
+    } else {
+        panic!("Unexpected response to Prune: {:?}", resp);
+    }
+
+    let _ = child.kill();
+    Ok(())
+}

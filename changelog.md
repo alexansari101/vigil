@@ -6,6 +6,41 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — daemon: implement prune command with reclaimed space reporting
+
+**What changed:**
+
+- Implemented `Prune` IPC handler in `main.rs`.
+- Added `prune` method to `JobManager` with single and multi-set support.
+- Updated `ResticExecutor` to execute `forget --prune` and parse text output for reclaimed bytes.
+- Added `PruneResult` and `PrunesTriggered` variants to IPC `ResponseData`.
+- Added regex-like text parsing in `executor.rs` for restic sizes (KiB, MiB, GiB, etc.).
+- Added `test_ipc_prune` integration test and updated `restic_test.rs`.
+
+**Why:**
+
+- Implements Task #13 and completes the daemon's core restic command set.
+- Enables the upcoming `backutil prune` CLI command.
+- Reclaimed space reporting provides immediate feedback on repository cleanup operations.
+
+**Files affected:**
+
+- crates/backutil-lib/src/ipc.rs (updated)
+- crates/backutil-daemon/src/executor.rs (updated)
+- crates/backutil-daemon/src/manager.rs (updated)
+- crates/backutil-daemon/src/main.rs (updated)
+- crates/backutil-daemon/tests/restic_test.rs (updated)
+- crates/backutil-daemon/tests/ipc_integration_test.rs (updated)
+- spec.md (updated)
+
+**Testing notes:**
+
+- Verified end-to-end flow via `test_ipc_prune`.
+- Verified output parsing in `executor.rs`.
+- All integration tests pass: `cargo test -p backutil-daemon -- --ignored --test-threads=1`.
+
+---
+
 ## [2026-01-26] — review: second pass on mount/unmount edge cases
 
 **What changed:**

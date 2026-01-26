@@ -412,6 +412,41 @@ impl JobManager {
         }
     }
 
+    pub async fn prune(&self, set_name: Option<String>) -> Result<backutil_lib::ipc::ResponseData> {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(name) = set_name {
+            if let Some(job) = jobs.get_mut(&name) {
+                info!("Pruning set {}", name);
+                let reclaimed = self.executor.prune(&job.set).await?;
+                info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
+                Ok(backutil_lib::ipc::ResponseData::PruneResult {
+                    set_name: name,
+                    reclaimed_bytes: reclaimed,
+                })
+            } else {
+                anyhow::bail!("Unknown backup set: {}", name)
+            }
+        } else {
+            info!("Pruning all sets");
+            let mut started = Vec::new();
+            let mut failed = Vec::new();
+
+            for (name, job) in jobs.iter_mut() {
+                match self.executor.prune(&job.set).await {
+                    Ok(reclaimed) => {
+                        info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
+                        started.push(name.clone());
+                    }
+                    Err(e) => {
+                        error!("Failed to prune set {}: {}", name, e);
+                        failed.push((name.clone(), e.to_string()));
+                    }
+                }
+            }
+            Ok(backutil_lib::ipc::ResponseData::PrunesTriggered { started, failed })
+        }
+    }
+
     async fn perform_unmount(name: &str, job: &mut Job) -> Result<()> {
         if !job.is_mounted {
             return Ok(());

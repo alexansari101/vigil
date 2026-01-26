@@ -26,19 +26,6 @@
 
 ---
 
-### 13. [ ] Daemon prune
-
-Implement `Prune` IPC handler. Run retention policy cleanup.
-
-**Acceptance criteria:**
-
-- Runs `restic forget --prune` with configured retention flags
-- Supports per-set retention override
-- Logs bytes reclaimed
-- `[BLOCKED BY: #8]`
-
----
-
 ## Phase 3: CLI
 
 ### 14. [ ] CLI skeleton and status command
@@ -333,4 +320,9 @@ Completed: 2026-01-26
 ### 12. [x] Daemon mount/unmount
 
 Branch: `feature/daemon-mount-unmount`
+Completed: 2026-01-26
+
+### 13. [x] Daemon prune
+
+Branch: `feature/daemon-prune`
 Completed: 2026-01-26
