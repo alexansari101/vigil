@@ -24,18 +24,6 @@
 
 ## Phase 2: Daemon Core
 
-### 6. [ ] File watcher
-
-Implement inotify-based directory watching. Detect file creates, modifies, deletes in configured source directories.
-
-**Acceptance criteria:**
-
-- Watches all source paths from config
-- Emits internal events on file changes
-- Ignores excluded patterns
-- Handles watch errors gracefully (e.g., directory doesn't exist)
-- `[BLOCKED BY: #2, #5]`
-
 ---
 
 ### 7. [ ] Debounce logic
@@ -368,3 +356,8 @@ Completed: 2026-01-25
 
 Branch: `feature/daemon-skeleton`
 Completed: 2026-01-25
+
+### 6. [x] File watcher
+
+Branch: `feature/file-watcher`
+Completed: 2026-01-26

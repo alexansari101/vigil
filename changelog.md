@@ -290,3 +290,39 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 **Dependencies/blockers:**
 
 - Unblocks: Task #6 (File watcher), Task #8 (Restic executor), Task #13 (CLI status).
+
+---
+
+## [2026-01-26] 5a83f42 — daemon: implement file watcher with glob filtering
+
+**What changed:**
+
+- Implemented `FileWatcher` using the `notify` crate.
+- Added `globset` dependency for exclusion pattern support.
+- Implemented recursive watching of configured source paths.
+- Added robust filtering for excluded patterns (filename, absolute, and relative paths).
+- Integrated watcher into the daemon's main loop via an `mpsc` channel.
+- Added unit tests for filtering logic in `watcher.rs`.
+
+**Why:**
+
+- Implements Task #6 and Section 4 of `spec.md`.
+- Foundation for automated backups triggered by file changes.
+
+**Files affected:**
+
+- crates/backutil-daemon/src/watcher.rs (new)
+- crates/backutil-daemon/src/main.rs (updated)
+- crates/backutil-daemon/Cargo.toml (updated)
+- Cargo.toml (updated)
+
+**Testing notes:**
+
+- Unit tests verify filtering of `*.tmp` and directory-based exclusions.
+- Manual verification: daemon detects file changes in real-time.
+- Verified that directory creation/deletion events are correctly ignored.
+
+**Dependencies/blockers:**
+
+- Added `globset`.
+- Unblocks: Task #7 (Debounce logic).

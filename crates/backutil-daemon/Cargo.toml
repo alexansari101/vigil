@@ -15,6 +15,7 @@ tracing-subscriber.workspace = true
 chrono.workspace = true
 anyhow.workspace = true
 libc.workspace = true
+globset.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use backutil_lib::config::{load_config, Config};
 use backutil_lib::ipc::{Request, Response, ResponseData};
 use backutil_lib::paths;
 use std::fs;
@@ -7,11 +8,15 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::broadcast;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
+
+mod watcher;
+use watcher::{FileWatcher, WatcherEvent};
 
 struct Daemon {
     pid_path: PathBuf,
     socket_path: PathBuf,
+    config: Config,
     shutdown_tx: broadcast::Sender<()>,
 }
 
@@ -19,10 +24,12 @@ impl Daemon {
     fn new() -> Result<Self> {
         let pid_path = paths::pid_path();
         let socket_path = paths::socket_path();
+        let config = load_config().context("Failed to load configuration")?;
         let (shutdown_tx, _) = broadcast::channel(1);
         Ok(Self {
             pid_path,
             socket_path,
+            config,
             shutdown_tx,
         })
     }
@@ -77,6 +84,10 @@ impl Daemon {
         let listener =
             UnixListener::bind(&self.socket_path).context("Failed to bind Unix socket")?;
 
+        let (watcher_tx, mut watcher_rx) = tokio::sync::mpsc::channel(100);
+        let _watcher =
+            FileWatcher::new(&self.config, watcher_tx).context("Failed to start file watcher")?;
+
         info!("Daemon listening on {:?}", self.socket_path);
 
         let mut sigterm = signal(SignalKind::terminate())?;
@@ -107,6 +118,16 @@ impl Daemon {
                 _ = sigint.recv() => {
                     info!("Received SIGINT, shutting down...");
                     break;
+                }
+                res = watcher_rx.recv() => {
+                    if let Some(event) = res {
+                        match event {
+                            WatcherEvent::FileChanged { set_name, path } => {
+                                debug!("File change detected for set {}: {:?}", set_name, path);
+                                // TODO: Trigger debounce logic (Next task)
+                            }
+                        }
+                    }
                 }
                 _ = shutdown_rx.recv() => {
                     info!("Received shutdown request via IPC, shutting down...");
@@ -201,6 +222,10 @@ mod tests {
         let daemon = Daemon {
             pid_path: pid_path.clone(),
             socket_path: socket_path.clone(),
+            config: Config {
+                global: Default::default(),
+                backup_sets: vec![],
+            },
             shutdown_tx,
         };
 
