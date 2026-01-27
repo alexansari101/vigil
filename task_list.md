@@ -32,22 +32,6 @@
 
 ---
 
----
-
----
-
-### 18. [ ] CLI prune command
-
-Implement `backutil prune [SET]`.
-
-**Acceptance criteria:**
-
-- Triggers prune via daemon
-- Shows summary of space reclaimed
-- `[BLOCKED BY: #13, #14]`
-
----
-
 ### 19. [ ] CLI logs command
 
 Implement `backutil logs` to tail the log file.
@@ -302,4 +286,9 @@ Review Fixes: 2026-01-26 (Fix CLI hang on backup failure)
 ### 17. [x] CLI mount/unmount commands
 
 Branch: `feature/cli-mount-unmount`
+Completed: 2026-01-26
+
+### 18. [x] CLI prune command
+
+Branch: `feature/cli-prune`
 Completed: 2026-01-26

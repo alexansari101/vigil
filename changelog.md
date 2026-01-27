@@ -8,6 +8,39 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — feature: cli prune command
+
+**What changed:**
+
+- Implemented `backutil prune [SET]` command in the CLI.
+- Updated `ResponseData::PrunesTriggered` in `backutil-lib` to include reclaimed space information.
+- Updated `JobManager::prune` in `backutil-daemon` to report reclaimed space for each set when pruning all.
+- Added a summary display in the CLI for multi-set prune operations.
+- Added human-readable size formatting for reclaimed space.
+
+**Why:**
+
+- Implements Task #18 and provides users with a way to manually trigger repository cleanup via the CLI.
+- Fulfills the requirement to show a summary of space reclaimed for all pruned sets.
+
+**Files affected:**
+
+- crates/backutil-lib/src/ipc.rs (modified)
+- crates/backutil-daemon/src/manager.rs (modified)
+- crates/backutil/src/main.rs (modified)
+
+**Testing notes:**
+
+- Manually verified end-to-end with a test script covering both single-set and multi-set prune scenarios.
+- Verified correct summary table display for multi-set prune.
+- Verified correct error propagation if any set fails to prune.
+
+**Dependencies/blockers:**
+
+- Unblocks: TUI interactive commands for pruning (Task #25).
+
+---
+
 ## [2026-01-26] — review: fix mount/unmount exit codes and TTY check
 
 **What changed:**

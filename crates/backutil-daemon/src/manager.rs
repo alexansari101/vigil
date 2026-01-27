@@ -477,7 +477,7 @@ impl JobManager {
                 match self.executor.prune(&effective_set).await {
                     Ok(reclaimed) => {
                         info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
-                        succeeded.push(name.clone());
+                        succeeded.push((name.clone(), reclaimed));
                     }
                     Err(e) => {
                         error!("Failed to prune set {}: {}", name, e);
@@ -485,10 +485,7 @@ impl JobManager {
                     }
                 }
             }
-            Ok(backutil_lib::ipc::ResponseData::PrunesTriggered {
-                started: succeeded,
-                failed,
-            })
+            Ok(backutil_lib::ipc::ResponseData::PrunesTriggered { succeeded, failed })
         }
     }
 

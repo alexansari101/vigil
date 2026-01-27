@@ -74,8 +74,8 @@ pub enum ResponseData {
     },
     /// Result of triggering prunes for multiple sets.
     PrunesTriggered {
-        started: Vec<String>,
-        failed: Vec<(String, String)>,
+        succeeded: Vec<(String, u64)>, // (set_name, reclaimed_bytes)
+        failed: Vec<(String, String)>, // (set_name, error_message)
     },
 }
 

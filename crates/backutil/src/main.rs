@@ -85,6 +85,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Unmount { set } => {
             handle_unmount(set).await?;
         }
+        Commands::Prune { set } => {
+            handle_prune(set).await?;
+        }
         _ => {
             println!("Command not yet implemented.");
         }
@@ -431,6 +434,74 @@ async fn handle_unmount(set_name: Option<String>) -> anyhow::Result<()> {
         Response::Error { code, message } => {
             eprintln!("Error unmounting ({}): {}", code, message);
             std::process::exit(5); // Exit code 5 per spec.md Section 12: Mount/unmount error
+        }
+        _ => {
+            println!("Unexpected response from daemon.");
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_prune(set_name: Option<String>) -> anyhow::Result<()> {
+    let mut stream = connect_to_daemon().await?;
+    send_request(
+        &mut stream,
+        Request::Prune {
+            set_name: set_name.clone(),
+        },
+    )
+    .await?;
+
+    let response = receive_response(&mut stream).await?;
+    match response {
+        Response::Ok(Some(data)) => match data {
+            ResponseData::PruneResult {
+                set_name,
+                reclaimed_bytes,
+            } => {
+                println!(
+                    "Pruned set '{}': {} reclaimed",
+                    set_name,
+                    format_size(reclaimed_bytes)
+                );
+            }
+            ResponseData::PrunesTriggered { succeeded, failed } => {
+                if succeeded.is_empty() && failed.is_empty() {
+                    println!("No backup sets found to prune.");
+                    return Ok(());
+                }
+
+                println!("{:<15} {:<15}", "NAME", "RECLAIMED");
+                println!("{}", "-".repeat(31));
+
+                let mut total_reclaimed = 0;
+                for (name, reclaimed) in &succeeded {
+                    println!("{:<15} {:<15}", name, format_size(*reclaimed));
+                    total_reclaimed += reclaimed;
+                }
+
+                for (name, error) in &failed {
+                    println!("{:<15} Error: {:<15}", name, error);
+                }
+
+                println!("{}", "-".repeat(31));
+                println!("{:<15} {:<15}", "TOTAL", format_size(total_reclaimed));
+
+                if !failed.is_empty() {
+                    anyhow::bail!("One or more prune operations failed.");
+                }
+            }
+            _ => {
+                println!("Unexpected response from daemon.");
+            }
+        },
+        Response::Ok(None) => {
+            println!("Prune operation completed.");
+        }
+        Response::Error { code, message } => {
+            eprintln!("Error from daemon ({}): {}", code, message);
+            std::process::exit(1);
         }
         _ => {
             println!("Unexpected response from daemon.");
