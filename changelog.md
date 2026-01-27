@@ -8,6 +8,35 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — review: fix logs command edge cases
+
+**What changed:**
+
+- Fixed partial first line issue: when seeking mid-file, now skips the first (partial) line.
+- Added `stdout().flush()` calls in follow mode to ensure output appears immediately.
+- Fixed stale file handle issue: re-opens file after log truncation/rotation instead of just seeking.
+
+**Why:**
+
+- Senior code review identified that seeking to `size - 2048` could land mid-line, displaying garbage.
+- Without explicit flush, `print!` output may not appear until the buffer fills.
+- After log rotation, the old file handle could become stale; re-opening ensures fresh content.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (updated)
+
+**Testing notes:**
+
+- All workspace tests pass.
+- Quality checks pass: cargo test, cargo fmt --check, cargo clippy.
+
+**Dependencies/blockers:**
+
+- None.
+
+---
+
 ## [2026-01-26] — feature: cli logs command
 
 **What changed:**

@@ -447,6 +447,9 @@ async fn handle_unmount(set_name: Option<String>) -> anyhow::Result<()> {
 }
 
 async fn handle_logs(follow: bool) -> anyhow::Result<()> {
+    use std::io::Write;
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt};
+
     let log_path = paths::log_path();
 
     if !log_path.exists() {
@@ -470,8 +473,14 @@ async fn handle_logs(follow: bool) -> anyhow::Result<()> {
         pos = size - 2048;
     }
 
-    use tokio::io::{AsyncReadExt, AsyncSeekExt};
     file.seek(std::io::SeekFrom::Start(pos)).await?;
+
+    // If we seeked mid-file, skip the first (likely partial) line
+    if pos > 0 {
+        let mut buf_reader = tokio::io::BufReader::new(&mut file);
+        let mut discard = String::new();
+        buf_reader.read_line(&mut discard).await?;
+    }
 
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).await?;
@@ -499,10 +508,11 @@ async fn handle_logs(follow: bool) -> anyhow::Result<()> {
         let current_size = metadata.len();
 
         if current_size < pos {
-            // Log file was truncated
+            // Log file was truncated or rotated - re-open the file
             println!("--- Log file truncated ---");
+            std::io::stdout().flush()?;
+            file = tokio::fs::File::open(&log_path).await?;
             pos = 0;
-            file.seek(std::io::SeekFrom::Start(0)).await?;
         }
 
         if current_size > pos {
@@ -510,6 +520,7 @@ async fn handle_logs(follow: bool) -> anyhow::Result<()> {
             let mut new_content = Vec::new();
             file.read_to_end(&mut new_content).await?;
             print!("{}", String::from_utf8_lossy(&new_content));
+            std::io::stdout().flush()?;
             pos = current_size;
         }
 
