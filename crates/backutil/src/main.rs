@@ -88,6 +88,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Prune { set } => {
             handle_prune(set).await?;
         }
+        Commands::Logs { follow } => {
+            handle_logs(follow).await?;
+        }
         _ => {
             println!("Command not yet implemented.");
         }
@@ -441,6 +444,77 @@ async fn handle_unmount(set_name: Option<String>) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+async fn handle_logs(follow: bool) -> anyhow::Result<()> {
+    let log_path = paths::log_path();
+
+    if !log_path.exists() {
+        if !follow {
+            println!("Log file {:?} does not exist.", log_path);
+            return Ok(());
+        }
+        println!("Waiting for log file {:?} to be created...", log_path);
+        while !log_path.exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }
+
+    let mut file = tokio::fs::File::open(&log_path).await?;
+    let mut pos = 0u64;
+
+    // Initial tail: show last ~2KB or 20 lines if possible
+    let metadata = file.metadata().await?;
+    let size = metadata.len();
+    if size > 2048 {
+        pos = size - 2048;
+    }
+
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+    file.seek(std::io::SeekFrom::Start(pos)).await?;
+
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer).await?;
+
+    // Find last 20 lines in the buffer
+    let content = String::from_utf8_lossy(&buffer);
+    let lines: Vec<&str> = content.lines().collect();
+    let start_idx = if lines.len() > 20 {
+        lines.len() - 20
+    } else {
+        0
+    };
+    for line in &lines[start_idx..] {
+        println!("{}", line);
+    }
+
+    if !follow {
+        return Ok(());
+    }
+
+    // Follow mode
+    pos = size;
+    loop {
+        let metadata = tokio::fs::metadata(&log_path).await?;
+        let current_size = metadata.len();
+
+        if current_size < pos {
+            // Log file was truncated
+            println!("--- Log file truncated ---");
+            pos = 0;
+            file.seek(std::io::SeekFrom::Start(0)).await?;
+        }
+
+        if current_size > pos {
+            file.seek(std::io::SeekFrom::Start(pos)).await?;
+            let mut new_content = Vec::new();
+            file.read_to_end(&mut new_content).await?;
+            print!("{}", String::from_utf8_lossy(&new_content));
+            pos = current_size;
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
 }
 
 async fn handle_prune(set_name: Option<String>) -> anyhow::Result<()> {

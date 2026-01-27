@@ -8,6 +8,38 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — feature: cli logs command
+
+**What changed:**
+
+- Implemented `backutil logs [-f]` command.
+- Added logic to tail the log file, showing the last 20 lines by default.
+- Implemented follow mode (`-f`) which waits for new log entries.
+- Added graceful handling for missing log files (waits in follow mode, exits otherwise).
+
+**Why:**
+
+- Implements Task #19 and provides users with a way to monitor daemon activity and backup progress.
+- Facilitates debugging by providing easy access to the log stream.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+
+**Testing notes:**
+
+- Verified with a custom test script covering:
+  - Normal tailing of existing logs.
+  - Follow mode detecting new log lines.
+  - Handling of missing log files.
+  - Tailing when file is smaller than buffer.
+- All workspace tests pass.
+- Verified `cargo fmt` and `cargo clippy`.
+
+**Dependencies/blockers:**
+
+- None.
+
 ## [2026-01-26] — review: fix prune exit code and update spec
 
 **What changed:**

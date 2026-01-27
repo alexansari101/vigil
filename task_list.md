@@ -32,19 +32,6 @@
 
 ---
 
-### 19. [ ] CLI logs command
-
-Implement `backutil logs` to tail the log file.
-
-**Acceptance criteria:**
-
-- Tails `~/.local/share/backutil/backutil.log`
-- Supports `-f` for follow mode
-- Graceful handling if log doesn't exist
-- `[BLOCKED BY: #4, #14]`
-
----
-
 ### 20. [ ] CLI bootstrap command
 
 Implement `backutil bootstrap` to generate and enable systemd user unit.
@@ -291,4 +278,9 @@ Completed: 2026-01-26
 ### 18. [x] CLI prune command
 
 Branch: `feature/cli-prune`
+Completed: 2026-01-26
+
+### 19. [x] CLI logs command
+
+Branch: `feature/cli-logs`
 Completed: 2026-01-26
