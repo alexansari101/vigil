@@ -32,32 +32,6 @@
 
 ---
 
-### 20. [ ] CLI bootstrap command
-
-Implement `backutil bootstrap` to generate and enable systemd user unit.
-
-**Acceptance criteria:**
-
-- Generates unit file per spec.md Section 8
-- Runs `systemctl --user daemon-reload`
-- Enables and starts the service
-- Checks for missing dependencies (restic, fusermount3, notify-send)
-- `[BLOCKED BY: #14]`
-
----
-
-### 21. [ ] CLI disable/uninstall commands
-
-Implement `backutil disable` and `backutil uninstall [--purge]`.
-
-**Acceptance criteria:**
-
-- `disable` stops and disables systemd unit
-- `uninstall` removes systemd unit
-- `uninstall --purge` also removes config, logs, password file
-- Warns if mounts are active
-- `[BLOCKED BY: #20]`
-
 ---
 
 ## Phase 4: TUI
@@ -208,3 +182,5 @@ Write user-facing README with installation, quick start, and configuration examp
 | 17 | CLI mount/unmount commands | `4fe32da` | 2026-01-26 |
 | 18 | CLI prune command | `143fb2d` | 2026-01-26 |
 | 19 | CLI logs command | `762c0fb` | 2026-01-26 |
+| 20 | CLI bootstrap command | `060050c` | 2026-01-26 |
+| 21 | CLI disable/uninstall commands | `060050c` | 2026-01-26 |
