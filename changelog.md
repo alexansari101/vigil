@@ -8,6 +8,27 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-27] — bugfix: fix false positive mount detection during uninstall
+
+**What changed:**
+
+- Updated `warn_if_mounts_active` to only report directories that are non-empty.
+
+**Why:**
+
+- The previous check reported any directory in the mount base, even if it was just an empty directory left over from a previous unmount, causing confusing warnings during `uninstall` and `disable`.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+
+**Testing notes:**
+
+- Verified that empty directories no longer trigger the warning.
+- Verified that active mounts (non-empty directories) still trigger the warning.
+
+---
+
 ## [2026-01-27] — bugfix: fix snapshots query using deprecated --last flag
 
 **What changed:**

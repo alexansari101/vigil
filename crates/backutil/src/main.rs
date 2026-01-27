@@ -566,7 +566,12 @@ fn warn_if_mounts_active() {
         if let Ok(entries) = std::fs::read_dir(&mount_base) {
             let active_mounts: Vec<_> = entries
                 .filter_map(|e| e.ok())
-                .filter(|e| e.path().is_dir())
+                .filter(|e| {
+                    e.path().is_dir()
+                        && std::fs::read_dir(e.path())
+                            .map(|mut r| r.next().is_some())
+                            .unwrap_or(false)
+                })
                 .map(|e| e.file_name().to_string_lossy().to_string())
                 .collect();
             if !active_mounts.is_empty() {
