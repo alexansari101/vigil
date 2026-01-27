@@ -187,100 +187,24 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ## Completed Tasks
 
-### 1. [x] Project scaffolding
-
-Branch: `feature/project-scaffold`
-Completed: 2026-01-24
-
-### 2. [x] Config parsing
-
-Branch: `feature/config-parsing`
-Completed: 2026-01-25
-
-### 3. [x] Shared types and IPC messages
-
-Branch: `feature/shared-types-ipc`
-Completed: 2026-01-25
-
-### 4. [x] Path helpers
-
-Branch: `feature/path-helpers`
-Completed: 2026-01-25
-
-### 5. [x] Daemon skeleton with IPC server
-
-Branch: `feature/daemon-skeleton`
-Completed: 2026-01-25
-
-### 6. [x] File watcher
-
-Branch: `feature/file-watcher`
-Completed: 2026-01-26
-
-### 7. [x] Debounce logic
-
-Branch: `feature/debounce-logic`
-Completed: 2026-01-26
-
-### 8. [x] Restic executor
-
-Branch: `feature/restic-executor`
-Completed: 2026-01-26
-
-### 9. [x] Daemon backup orchestration
-
-Branch: `feature/daemon-orchestration`
-Completed: 2026-01-26
-
-### 10. [x] Daemon status and snapshots
-
-Branch: `feature/daemon-status-snapshots`
-Completed: 2026-01-26
-
-### 11. [x] Daemon IPC integration test
-
-Branch: `feature/daemon-ipc-integration-test`
-Completed: 2026-01-26
-
-### 12. [x] Daemon mount/unmount
-
-Branch: `feature/daemon-mount-unmount`
-Completed: 2026-01-26
-
-### 13. [x] Daemon prune
-
-Branch: `feature/daemon-prune`
-Completed: 2026-01-26
-
-### 14. [x] CLI skeleton and status command
-
-Branch: `feature/cli-skeleton-status`
-Review Fixes: 2026-01-26 (Grammar, Unit Tests, Status Indicator)
-Completed: 2026-01-26
-
-### 15. [x] CLI init command
-
-Branch: `feature/cli-init`
-Review Fixes: 2026-01-26 (Error handling, Integration Test)
-Completed: 2026-01-26
-
-### 16. [x] CLI backup command
-
-Branch: `feature/cli-backup`
-Completed: 2026-01-26
-Review Fixes: 2026-01-26 (Fix CLI hang on backup failure)
-
-### 17. [x] CLI mount/unmount commands
-
-Branch: `feature/cli-mount-unmount`
-Completed: 2026-01-26
-
-### 18. [x] CLI prune command
-
-Branch: `feature/cli-prune`
-Completed: 2026-01-26
-
-### 19. [x] CLI logs command
-
-Branch: `feature/cli-logs`
-Completed: 2026-01-26
+| # | Task | Branch | Completed |
+|---|------|--------|-----------|
+| 1 | Project scaffolding | `feature/project-scaffold` | 2026-01-24 |
+| 2 | Config parsing | `feature/config-parsing` | 2026-01-25 |
+| 3 | Shared types and IPC messages | `feature/shared-types-ipc` | 2026-01-25 |
+| 4 | Path helpers | `feature/path-helpers` | 2026-01-25 |
+| 5 | Daemon skeleton with IPC server | `feature/daemon-skeleton` | 2026-01-25 |
+| 6 | File watcher | `feature/file-watcher` | 2026-01-26 |
+| 7 | Debounce logic | `feature/debounce-logic` | 2026-01-26 |
+| 8 | Restic executor | `feature/restic-executor` | 2026-01-26 |
+| 9 | Daemon backup orchestration | `feature/daemon-orchestration` | 2026-01-26 |
+| 10 | Daemon status and snapshots | `feature/daemon-status-snapshots` | 2026-01-26 |
+| 11 | Daemon IPC integration test | `feature/daemon-ipc-integration-test` | 2026-01-26 |
+| 12 | Daemon mount/unmount | `feature/daemon-mount-unmount` | 2026-01-26 |
+| 13 | Daemon prune | `feature/daemon-prune` | 2026-01-26 |
+| 14 | CLI skeleton and status command | `feature/cli-skeleton-status` | 2026-01-26 |
+| 15 | CLI init command | `feature/cli-init` | 2026-01-26 |
+| 16 | CLI backup command | `feature/cli-backup` | 2026-01-26 |
+| 17 | CLI mount/unmount commands | `feature/cli-mount-unmount` | 2026-01-26 |
+| 18 | CLI prune command | `feature/cli-prune` | 2026-01-26 |
+| 19 | CLI logs command | `feature/cli-logs` | 2026-01-26 |
