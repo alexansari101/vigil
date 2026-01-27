@@ -195,6 +195,21 @@ The `backutil status` command should give users a quick overview of their backup
 
 ---
 
+### 33. [ ] Graceful backup set removal / purge command
+
+Implement a way to cleanup artifacts when a backup set is removed from the configuration. This includes unmounting and optionally deleting the Restic repository data.
+
+**Acceptance criteria:**
+
+- **Manual Purge**: `backutil purge <set-name>` command added to CLI.
+- **Confirmation**: Purge command MUST explicitly ask for `y/N` confirmation from the user with a prominent warning: "This will permanently delete all backup files for `<set-name>`. Source files will not be affected."
+- **Auto-Unmount**: If a set is removed from `config.toml`, the daemon should automatically unmount it if it was mounted.
+- **Cleanup**: Purge command removes the Restic repository directory and the local mount point directory.
+- **Safety**: Purge command should fail if the set is still present in `config.toml` (to prevent accidental data loss of active sets) or require a `--force` flag.
+- `[BLOCKED BY: #14]`
+
+---
+
 ## Completed Tasks
 
 | # | Task | Commit | Completed |

@@ -115,6 +115,7 @@ Communication between CLI/TUI and daemon uses JSON over Unix socket. Each messag
 | `Snapshots` | `set_name`: string, `limit`: int or null | List snapshots |
 | `Mount` | `set_name`: string, `snapshot_id`: string or null | Mount snapshot (null = latest) |
 | `Unmount` | `set_name`: string or null | Unmount (null = all) |
+| `Purge` | `set_name`: string | Remove repo and data for a set |
 | `Shutdown` | none | Graceful daemon shutdown |
 | `Ping` | none | Health check |
 
