@@ -159,6 +159,20 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ---
 
+### 31. [ ] Daemon status persistence on startup
+
+On daemon startup, query each backup set's restic repository for the most recent snapshot to populate `last_backup` in `SetStatus`. This ensures status displays correctly after daemon restart.
+
+**Acceptance criteria:**
+
+- On startup, daemon queries `restic snapshots --latest 1 --json` for each backup set
+- `last_backup` is populated with timestamp and snapshot_id from the most recent snapshot
+- If repository is empty or uninitialized, `last_backup` remains null
+- Status command shows correct "X ago" time even after daemon restart
+- `[BLOCKED BY: #14]`
+
+---
+
 ## Completed Tasks
 
 | # | Task | Commit | Completed |

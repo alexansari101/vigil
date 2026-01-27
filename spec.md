@@ -170,7 +170,7 @@ Communication between CLI/TUI and daemon uses JSON over Unix socket. Each messag
 
 - `name` — string
 - `state` — JobState
-- `last_backup` — BackupResult or null
+- `last_backup` — BackupResult or null (populated from most recent restic snapshot on daemon startup)
 - `source_paths` — list of paths
 - `target` — path
 - `is_mounted` — boolean

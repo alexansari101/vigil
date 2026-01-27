@@ -8,6 +8,49 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-27] — bugfix: fix snapshots query using deprecated --last flag
+
+**What changed:**
+
+- Changed `--last` to `--latest` in the restic snapshots query in `executor.rs`.
+
+**Why:**
+
+- Restic has deprecated `--last` flag in favor of `--latest`. The old flag was being misinterpreted as a snapshot ID prefix, causing the snapshots query to return empty results and breaking the `mount` command's interactive snapshot picker.
+
+**Files affected:**
+
+- crates/backutil-daemon/src/executor.rs (modified)
+
+**Testing notes:**
+
+- Verified mount command now correctly shows available snapshots.
+- Verified mounting works end-to-end.
+
+---
+
+## [2026-01-27] — bugfix: fix mount command invalid --snapshot flag
+
+**What changed:**
+
+- Removed invalid `--snapshot` flag from restic mount command in `executor.rs`.
+- Restic mount mounts the entire repository; snapshots are accessed via directory paths like `/ids/<snapshot_id>/`.
+
+**Why:**
+
+- `restic mount` does not have a `--snapshot` flag. The mount command was failing with "unknown flag: --snapshot".
+
+**Files affected:**
+
+- crates/backutil-daemon/src/executor.rs (modified)
+
+**Testing notes:**
+
+- Verified mount command works correctly.
+- Snapshots accessible via `/ids/`, `/snapshots/`, `/hosts/`, `/tags/` directories.
+
+---
+
 ## [2026-01-26] — feature: cli bootstrap, disable, and uninstall commands
 
 **What changed:**

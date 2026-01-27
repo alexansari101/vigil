@@ -163,7 +163,7 @@ impl ResticExecutor {
         ];
 
         if let Some(n) = limit {
-            args.push("--last".to_string());
+            args.push("--latest".to_string());
             args.push(n.to_string());
         }
 
@@ -259,10 +259,10 @@ impl ResticExecutor {
             password_file.to_string_lossy().to_string(),
         ];
 
-        if let Some(id) = snapshot_id {
-            args.push("--snapshot".to_string());
-            args.push(id.to_string());
-        }
+        // Note: restic mount doesn't have a --snapshot flag. It mounts the entire repository
+        // and snapshots are accessible via directory paths like /ids/<snapshot_id>/ or /snapshots/<timestamp>/
+        // The snapshot_id parameter is passed for informational purposes but not used here.
+        let _ = snapshot_id; // Suppress unused warning
 
         args.push(mountpoint.to_string_lossy().to_string());
 
