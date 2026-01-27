@@ -174,6 +174,27 @@ On daemon startup, query each backup set's restic repository for the most recent
 
 ---
 
+### 32. [ ] Enhanced status output with storage metrics
+
+The `backutil status` command should give users a quick overview of their backup health including storage consumption. Currently it only shows name, state, last backup time, and mount status.
+
+**Acceptance criteria:**
+
+- Status output includes snapshot count per backup set
+- Status output includes human-readable repository size (e.g., "1.2 GiB")
+- Status command remains responsive (target: <2s for typical use)
+- `[BLOCKED BY: #31]`
+
+**Considerations:**
+
+- `restic snapshots --json` returns snapshot list (fast)
+- `restic stats --json` returns size info but can be slow for large repos
+- Consider whether to query live on each status call vs cache in daemon state
+- If caching, when to refresh? (after backup, after prune, periodically?)
+- Current `SetStatus` struct in spec.md may need new fields
+
+---
+
 ## Completed Tasks
 
 | # | Task | Commit | Completed |
