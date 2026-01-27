@@ -501,7 +501,8 @@ async fn handle_prune(set_name: Option<String>) -> anyhow::Result<()> {
         }
         Response::Error { code, message } => {
             eprintln!("Error from daemon ({}): {}", code, message);
-            std::process::exit(1);
+            // Exit code 4 for restic errors per spec.md Section 12
+            std::process::exit(4);
         }
         _ => {
             println!("Unexpected response from daemon.");

@@ -138,7 +138,7 @@ Communication between CLI/TUI and daemon uses JSON over Unix socket. Each messag
 | `BackupFailed` | `set_name`: string, `error`: string |
 | `MountPath` | `path`: string |
 | `PruneResult` | `set_name`: string, `reclaimed_bytes`: integer |
-| `PrunesTriggered` | `started`: list of string, `failed`: list of (string, string) |
+| `PrunesTriggered` | `succeeded`: list of (string, integer), `failed`: list of (string, string) |
 
 ### Error Codes
 

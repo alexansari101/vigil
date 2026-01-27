@@ -8,6 +8,34 @@ For format guidelines, see `developer_guidelines.md` Section 9.
 
 ---
 
+## [2026-01-26] — review: fix prune exit code and update spec
+
+**What changed:**
+
+- Fixed CLI prune command to exit with code 4 on daemon errors (restic errors) per spec.md Section 12.
+- Updated spec.md to document the improved `PrunesTriggered` response format with reclaimed bytes per set.
+
+**Why:**
+
+- Spec compliance: prune errors are restic-related and should use exit code 4, not 1.
+- The implementation improved `PrunesTriggered` to include reclaimed bytes, but spec was not updated to match.
+
+**Files affected:**
+
+- spec.md (updated)
+- crates/backutil/src/main.rs (updated)
+
+**Testing notes:**
+
+- All workspace tests pass.
+- Quality checks pass: cargo test, cargo fmt --check, cargo clippy.
+
+**Dependencies/blockers:**
+
+- None.
+
+---
+
 ## [2026-01-26] — feature: cli prune command
 
 **What changed:**
