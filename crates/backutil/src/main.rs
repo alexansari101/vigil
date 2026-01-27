@@ -544,8 +544,10 @@ async fn handle_bootstrap() -> anyhow::Result<()> {
     let deps = ["restic", "fusermount3", "notify-send"];
     let mut missing = Vec::new();
     for dep in deps {
-        let status = tokio::process::Command::new(dep)
-            .arg("--version")
+        // Use `which` for dependency check since some tools (e.g., notify-send)
+        // don't reliably support --version flag
+        let status = tokio::process::Command::new("which")
+            .arg(dep)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
@@ -615,7 +617,28 @@ WantedBy=default.target
     Ok(())
 }
 
+/// Check if any mounts are active and warn the user
+fn warn_if_mounts_active() {
+    let mount_base = paths::mount_base_dir();
+    if mount_base.exists() {
+        if let Ok(entries) = std::fs::read_dir(&mount_base) {
+            let active_mounts: Vec<_> = entries
+                .filter_map(|e| e.ok())
+                .filter(|e| e.path().is_dir())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect();
+            if !active_mounts.is_empty() {
+                println!(
+                    "Warning: Active mounts detected: {}. Consider unmounting first with `backutil unmount`.",
+                    active_mounts.join(", ")
+                );
+            }
+        }
+    }
+}
+
 async fn handle_disable() -> anyhow::Result<()> {
+    warn_if_mounts_active();
     println!("Stopping and disabling backutil-daemon service...");
     let status = tokio::process::Command::new("systemctl")
         .arg("--user")
@@ -635,6 +658,7 @@ async fn handle_disable() -> anyhow::Result<()> {
 }
 
 async fn handle_uninstall(purge: bool) -> anyhow::Result<()> {
+    warn_if_mounts_active();
     println!("Uninstalling backutil...");
 
     // 1. Stop and disable service
