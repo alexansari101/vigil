@@ -8,6 +8,34 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-26] — feature: cli bootstrap, disable, and uninstall commands
+
+**What changed:**
+
+- Implemented `backutil bootstrap` to generate and enable systemd user unit.
+- Implemented `backutil disable` to stop and disable the service.
+- Implemented `backutil uninstall [--purge]` to remove the service and optionally purge configuration and logs.
+- Added dependency checks for `restic`, `fusermount3`, and `notify-send`.
+- Added integration tests for systemd-related CLI commands.
+
+**Why:**
+
+- Implements Task #20 and #21. Provides users with an easy way to set up and manage the background daemon.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+- crates/backutil/Cargo.toml (modified)
+- crates/backutil/tests/cli_systemd_test.rs (new)
+
+**Testing notes:**
+
+- Verified unit file generation in a temporary directory.
+- Verified manual bootstrap and uninstall (purge) functionality.
+- All integration tests pass.
+
+---
+
 ## [2026-01-26] — review: fix logs command edge cases
 
 **What changed:**

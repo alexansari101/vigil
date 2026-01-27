@@ -91,6 +91,15 @@ async fn main() -> anyhow::Result<()> {
         Commands::Logs { follow } => {
             handle_logs(follow).await?;
         }
+        Commands::Bootstrap => {
+            handle_bootstrap().await?;
+        }
+        Commands::Disable => {
+            handle_disable().await?;
+        }
+        Commands::Uninstall { purge } => {
+            handle_uninstall(purge).await?;
+        }
         _ => {
             println!("Command not yet implemented.");
         }
@@ -526,6 +535,167 @@ async fn handle_logs(follow: bool) -> anyhow::Result<()> {
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
+}
+
+async fn handle_bootstrap() -> anyhow::Result<()> {
+    println!("Bootstrapping backutil...");
+
+    // 1. Dependency check
+    let deps = ["restic", "fusermount3", "notify-send"];
+    let mut missing = Vec::new();
+    for dep in deps {
+        let status = tokio::process::Command::new(dep)
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await;
+
+        if status.is_err() || !status.unwrap().success() {
+            missing.push(dep);
+        }
+    }
+
+    if !missing.is_empty() {
+        println!("Warning: Missing dependencies: {}", missing.join(", "));
+        println!("Please install them to use all features.");
+    }
+
+    // 2. Generate systemd unit file
+    let unit_path = paths::systemd_unit_path();
+    if let Some(parent) = unit_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let unit_content = r#"[Unit]
+Description=Backutil Daemon - Automated Backup Service
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.cargo/bin/backutil-daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+"#;
+
+    std::fs::write(&unit_path, unit_content)?;
+    println!("Generated systemd unit at {:?}", unit_path);
+
+    // 3. systemctl --user daemon-reload
+    println!("Reloading systemd daemon...");
+    let status = tokio::process::Command::new("systemctl")
+        .arg("--user")
+        .arg("daemon-reload")
+        .status()
+        .await?;
+
+    if !status.success() {
+        anyhow::bail!("Failed to reload systemd daemon.");
+    }
+
+    // 4. systemctl --user enable --now backutil-daemon.service
+    println!("Enabling and starting backutil-daemon service...");
+    let status = tokio::process::Command::new("systemctl")
+        .arg("--user")
+        .arg("enable")
+        .arg("--now")
+        .arg("backutil-daemon.service")
+        .status()
+        .await?;
+
+    if status.success() {
+        println!("Successfully bootstrapped backutil-daemon.");
+    } else {
+        anyhow::bail!("Failed to enable/start backutil-daemon service.");
+    }
+
+    Ok(())
+}
+
+async fn handle_disable() -> anyhow::Result<()> {
+    println!("Stopping and disabling backutil-daemon service...");
+    let status = tokio::process::Command::new("systemctl")
+        .arg("--user")
+        .arg("disable")
+        .arg("--now")
+        .arg("backutil-daemon.service")
+        .status()
+        .await?;
+
+    if status.success() {
+        println!("Successfully disabled backutil-daemon.");
+    } else {
+        anyhow::bail!("Failed to disable backutil-daemon service.");
+    }
+
+    Ok(())
+}
+
+async fn handle_uninstall(purge: bool) -> anyhow::Result<()> {
+    println!("Uninstalling backutil...");
+
+    // 1. Stop and disable service
+    let _ = tokio::process::Command::new("systemctl")
+        .arg("--user")
+        .arg("stop")
+        .arg("backutil-daemon.service")
+        .status()
+        .await;
+
+    let _ = tokio::process::Command::new("systemctl")
+        .arg("--user")
+        .arg("disable")
+        .arg("backutil-daemon.service")
+        .status()
+        .await;
+
+    // 2. Remove unit file
+    let unit_path = paths::systemd_unit_path();
+    if unit_path.exists() {
+        std::fs::remove_file(&unit_path)?;
+        println!("Removed systemd unit {:?}", unit_path);
+    }
+
+    // 3. daemon-reload
+    let _ = tokio::process::Command::new("systemctl")
+        .arg("--user")
+        .arg("daemon-reload")
+        .status()
+        .await;
+
+    // 4. Purge if requested
+    if purge {
+        println!("Purging configuration and data...");
+        let config_dir = paths::config_dir();
+        if config_dir.exists() {
+            std::fs::remove_dir_all(&config_dir)?;
+            println!("Removed configuration directory {:?}", config_dir);
+        }
+
+        let data_dir = paths::log_path()
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| {
+                let mut p = std::env::var_os("HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+                p.push(".local");
+                p.push("share");
+                p.push("backutil");
+                p
+            });
+
+        if data_dir.exists() {
+            std::fs::remove_dir_all(&data_dir)?;
+            println!("Removed data directory {:?}", data_dir);
+        }
+    }
+
+    println!("Uninstall complete.");
+    Ok(())
 }
 
 async fn handle_prune(set_name: Option<String>) -> anyhow::Result<()> {
