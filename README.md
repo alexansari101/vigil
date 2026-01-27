@@ -99,18 +99,21 @@ sleep 2
 # Mount the repository (exposes all snapshots via FUSE)
 ./target/release/backutil mount test-set
 # Expected output:
-# Snapshot mounted at: /home/USER/.local/share/backutil/mnt/test-set
+# Repository mounted successfully.
+#
+# Browse your snapshots at: /home/USER/.local/share/backutil/mnt/test-set/
+#   by ID:        .../ids/<snapshot-id>/
+#   by timestamp: .../snapshots/<timestamp>/
+#   by host:      .../hosts/<hostname>/
+#   by tags:      .../tags/<tag>/
+#
+# Use `cp` to recover files, then `backutil unmount` when done.
 
-# Browse snapshots
-ls ~/.local/share/backutil/mnt/test-set/
-# Expected output:
-# hosts  ids  snapshots  tags
-
-# Browse a specific snapshot by ID
+# Browse and copy a file from a specific snapshot
 ls ~/.local/share/backutil/mnt/test-set/ids/
-# (lists snapshot IDs)
+cp ~/.local/share/backutil/mnt/test-set/ids/<snapshot-id>/path/to/file ~/recovered_file
 
-# Unmount
+# Unmount when done
 ./target/release/backutil unmount test-set
 # Expected output:
 # Successfully unmounted set 'test-set'.

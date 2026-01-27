@@ -330,17 +330,7 @@ async fn handle_status() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_mount(set_name: String, mut snapshot_id: Option<String>) -> anyhow::Result<()> {
-    // If no snapshot ID provided and stdout/stdin are TTYs, show interactive picker
-    use std::io::IsTerminal;
-    if snapshot_id.is_none() && std::io::stdout().is_terminal() && std::io::stdin().is_terminal() {
-        snapshot_id = pick_snapshot(&set_name).await?;
-        if snapshot_id.is_none() {
-            println!("No snapshot selected.");
-            return Ok(());
-        }
-    }
-
+async fn handle_mount(set_name: String, snapshot_id: Option<String>) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
     send_request(
         &mut stream,
@@ -354,7 +344,15 @@ async fn handle_mount(set_name: String, mut snapshot_id: Option<String>) -> anyh
     let response = receive_response(&mut stream).await?;
     match response {
         Response::Ok(Some(ResponseData::MountPath { path })) => {
-            println!("Snapshot mounted at: {}", path);
+            println!("Repository mounted successfully.");
+            println!();
+            println!("Browse your snapshots at: {}/", path);
+            println!("  by ID:        {}/ids/<snapshot-id>/", path);
+            println!("  by timestamp: {}/snapshots/<timestamp>/", path);
+            println!("  by host:      {}/hosts/<hostname>/", path);
+            println!("  by tags:      {}/tags/<tag>/", path);
+            println!();
+            println!("Use `cp` to recover files, then `backutil unmount` when done.");
         }
         Response::Error { code, message } => {
             eprintln!("Error mounting snapshot ({}): {}", code, message);
@@ -366,62 +364,6 @@ async fn handle_mount(set_name: String, mut snapshot_id: Option<String>) -> anyh
     }
 
     Ok(())
-}
-
-async fn pick_snapshot(set_name: &str) -> anyhow::Result<Option<String>> {
-    let mut stream = connect_to_daemon().await?;
-    send_request(
-        &mut stream,
-        Request::Snapshots {
-            set_name: set_name.to_string(),
-            limit: Some(10), // Show last 10 snapshots
-        },
-    )
-    .await?;
-
-    let response = receive_response(&mut stream).await?;
-    let snapshots = match response {
-        Response::Ok(Some(ResponseData::Snapshots { snapshots })) => snapshots,
-        Response::Error { code, message } => {
-            anyhow::bail!("Failed to fetch snapshots ({}): {}", code, message);
-        }
-        _ => anyhow::bail!("Unexpected response from daemon when fetching snapshots."),
-    };
-
-    if snapshots.is_empty() {
-        println!("No snapshots found for set '{}'.", set_name);
-        return Ok(None);
-    }
-
-    println!("Recent snapshots for set '{}':", set_name);
-    for (i, snap) in snapshots.iter().enumerate() {
-        println!(
-            "[{}] {} - {} ({})",
-            i + 1,
-            snap.short_id,
-            snap.timestamp
-                .with_timezone(&chrono::Local)
-                .format("%Y-%m-%d %H:%M:%S"),
-            snap.paths
-                .iter()
-                .map(|p| p.to_string_lossy())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    }
-
-    print!("Select snapshot [1-{}]: ", snapshots.len());
-    use std::io::Write;
-    std::io::stdout().flush()?;
-
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    let choice: usize = match input.trim().parse::<usize>() {
-        Ok(n) if n > 0 && n <= snapshots.len() => n - 1,
-        _ => return Ok(None),
-    };
-
-    Ok(Some(snapshots[choice].id.clone()))
 }
 
 async fn handle_unmount(set_name: Option<String>) -> anyhow::Result<()> {

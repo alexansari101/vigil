@@ -102,6 +102,7 @@ Review all error paths. Ensure user-facing errors include what/why/how-to-fix pe
 - Audit CLI and TUI error output
 - No raw error messages shown to users
 - Actionable suggestions for common errors
+- Proactive check: prune should fail with clear message if set is mounted (not restic lock error)
 - `[BLOCKED BY: #25]`
 
 ---
