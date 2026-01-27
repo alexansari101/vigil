@@ -187,24 +187,24 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ## Completed Tasks
 
-| # | Task | Branch | Completed |
-|---|------|--------|-----------|
-| 1 | Project scaffolding | `feature/project-scaffold` | 2026-01-24 |
-| 2 | Config parsing | `feature/config-parsing` | 2026-01-25 |
-| 3 | Shared types and IPC messages | `feature/shared-types-ipc` | 2026-01-25 |
-| 4 | Path helpers | `feature/path-helpers` | 2026-01-25 |
-| 5 | Daemon skeleton with IPC server | `feature/daemon-skeleton` | 2026-01-25 |
-| 6 | File watcher | `feature/file-watcher` | 2026-01-26 |
-| 7 | Debounce logic | `feature/debounce-logic` | 2026-01-26 |
-| 8 | Restic executor | `feature/restic-executor` | 2026-01-26 |
-| 9 | Daemon backup orchestration | `feature/daemon-orchestration` | 2026-01-26 |
-| 10 | Daemon status and snapshots | `feature/daemon-status-snapshots` | 2026-01-26 |
-| 11 | Daemon IPC integration test | `feature/daemon-ipc-integration-test` | 2026-01-26 |
-| 12 | Daemon mount/unmount | `feature/daemon-mount-unmount` | 2026-01-26 |
-| 13 | Daemon prune | `feature/daemon-prune` | 2026-01-26 |
-| 14 | CLI skeleton and status command | `feature/cli-skeleton-status` | 2026-01-26 |
-| 15 | CLI init command | `feature/cli-init` | 2026-01-26 |
-| 16 | CLI backup command | `feature/cli-backup` | 2026-01-26 |
-| 17 | CLI mount/unmount commands | `feature/cli-mount-unmount` | 2026-01-26 |
-| 18 | CLI prune command | `feature/cli-prune` | 2026-01-26 |
-| 19 | CLI logs command | `feature/cli-logs` | 2026-01-26 |
+| # | Task | Commit | Completed |
+| --- | --- | --- | --- |
+| 1 | Project scaffolding | `b21674c` | 2026-01-24 |
+| 2 | Config parsing | `eab85e0` | 2026-01-25 |
+| 3 | Shared types and IPC messages | `62e44a9` | 2026-01-25 |
+| 4 | Path helpers | `f037857` | 2026-01-25 |
+| 5 | Daemon skeleton with IPC server | `c8e7f76` | 2026-01-25 |
+| 6 | File watcher | `5a83f42` | 2026-01-26 |
+| 7 | Debounce logic | `8f043eb` | 2026-01-26 |
+| 8 | Restic executor | `3ab7da4` | 2026-01-26 |
+| 9 | Daemon backup orchestration | `cb1a598` | 2026-01-26 |
+| 10 | Daemon status and snapshots | `ba339d4` | 2026-01-26 |
+| 11 | Daemon IPC integration test | `7b87efb` | 2026-01-26 |
+| 12 | Daemon mount/unmount | `2621a60` | 2026-01-26 |
+| 13 | Daemon prune | `77692f4` | 2026-01-26 |
+| 14 | CLI skeleton and status command | `f70df4a` | 2026-01-26 |
+| 15 | CLI init command | `b35e580` | 2026-01-26 |
+| 16 | CLI backup command | `d3cd551` | 2026-01-26 |
+| 17 | CLI mount/unmount commands | `4fe32da` | 2026-01-26 |
+| 18 | CLI prune command | `143fb2d` | 2026-01-26 |
+| 19 | CLI logs command | `762c0fb` | 2026-01-26 |
