@@ -25,6 +25,8 @@ pub enum Request {
     Unmount { set_name: Option<String> },
     /// Request graceful daemon shutdown.
     Shutdown,
+    /// Reload configuration from disk.
+    ReloadConfig,
     /// Health check.
     Ping,
 }

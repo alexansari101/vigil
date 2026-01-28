@@ -17,7 +17,7 @@ pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, Job>>>,
     executor: Arc<ResticExecutor>,
     /// Global retention policy for fallback when per-set retention is not specified.
-    global_retention: Option<RetentionPolicy>,
+    global_retention: Mutex<Option<RetentionPolicy>>,
     /// Broadcast sender for async events (e.g. backup completion)
     event_tx: broadcast::Sender<Response>,
 }
@@ -53,13 +53,66 @@ impl JobManager {
         Self {
             jobs: Arc::new(Mutex::new(jobs)),
             executor: Arc::new(ResticExecutor::new()),
-            global_retention: config.global.retention.clone(),
+            global_retention: Mutex::new(config.global.retention.clone()),
             event_tx,
         }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<Response> {
         self.event_tx.subscribe()
+    }
+
+    pub async fn sync_config(&self, config: &Config) -> Result<()> {
+        let mut jobs = self.jobs.lock().await;
+        let new_set_names: std::collections::HashSet<String> =
+            config.backup_sets.iter().map(|s| s.name.clone()).collect();
+
+        // 1. Identify and handle removed sets
+        let removed_set_names: Vec<String> = jobs
+            .keys()
+            .filter(|name| !new_set_names.contains(*name))
+            .cloned()
+            .collect();
+
+        for name in removed_set_names {
+            info!("Backup set '{}' removed from config, cleaning up...", name);
+            if let Some(mut job) = jobs.remove(&name) {
+                // Unmount if mounted
+                if let Err(e) = Self::perform_unmount(&name, &mut job).await {
+                    error!("Failed to unmount removed set '{}': {}", name, e);
+                }
+            }
+        }
+
+        // 2. Add or update remaining sets
+        for set in &config.backup_sets {
+            if let Some(job) = jobs.get_mut(&set.name) {
+                // Update existing job config
+                debug!("Updating config for backup set '{}'", set.name);
+                job.set = set.clone();
+            } else {
+                // Add new job
+                info!("New backup set '{}' added to config", set.name);
+                jobs.insert(
+                    set.name.clone(),
+                    Job {
+                        set: set.clone(),
+                        state: JobState::Idle,
+                        last_change: None,
+                        last_backup: None,
+                        is_mounted: false,
+                        immediate_trigger: false,
+                        mount_process: None,
+                    },
+                );
+            }
+        }
+
+        // 3. Update global retention
+        let mut global_retention = self.global_retention.lock().await;
+        *global_retention = config.global.retention.clone();
+
+        Ok(())
     }
 
     pub async fn handle_file_change(&self, set_name: &str) -> Result<()> {
@@ -456,7 +509,7 @@ impl JobManager {
             if let Some(job) = jobs.get(&name) {
                 info!("Pruning set {}", name);
                 // Use per-set retention if available, otherwise fall back to global retention
-                let effective_set = self.with_effective_retention(&job.set);
+                let effective_set = self.with_effective_retention(&job.set).await;
                 let reclaimed = self.executor.prune(&effective_set).await?;
                 info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
                 Ok(backutil_lib::ipc::ResponseData::PruneResult {
@@ -473,7 +526,7 @@ impl JobManager {
 
             for (name, job) in jobs.iter() {
                 // Use per-set retention if available, otherwise fall back to global retention
-                let effective_set = self.with_effective_retention(&job.set);
+                let effective_set = self.with_effective_retention(&job.set).await;
                 match self.executor.prune(&effective_set).await {
                     Ok(reclaimed) => {
                         info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
@@ -491,10 +544,10 @@ impl JobManager {
 
     /// Creates a copy of the BackupSet with effective retention policy.
     /// Falls back to global retention if per-set retention is not specified.
-    fn with_effective_retention(&self, set: &BackupSet) -> BackupSet {
+    async fn with_effective_retention(&self, set: &BackupSet) -> BackupSet {
         let mut effective = set.clone();
         if effective.retention.is_none() {
-            effective.retention = self.global_retention.clone();
+            effective.retention = self.global_retention.lock().await.clone();
         }
         effective
     }

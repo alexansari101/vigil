@@ -8,6 +8,38 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-28] — feature: graceful removal and purge command
+
+**What changed:**
+
+- Implemented `backutil purge <set-name>` command to delete Restic repositories and cleanup artifacts.
+- Added automatic configuration reload in the daemon when `config.toml` is modified.
+- Implemented automatic unmount of backup sets when they are removed from the configuration.
+- Added `ReloadConfig` IPC command for manual or programmatic configuration refresh.
+- Updated `Config` struct to allow empty or missing `backup_set` list.
+- Improved `JobManager` to handle dynamic addition and removal of backup jobs.
+
+**Why:**
+
+- Implements Task #33. Provides a safe and convenient way for users to remove backup sets and cleanup storage. Ensures the daemon remains in sync with the configuration file without requiring a restart.
+
+**Files affected:**
+
+- crates/backutil-lib/src/ipc.rs (modified)
+- crates/backutil-lib/src/config.rs (modified)
+- crates/backutil-daemon/src/main.rs (modified)
+- crates/backutil-daemon/src/manager.rs (modified)
+- crates/backutil/src/main.rs (modified)
+
+**Testing notes:**
+
+- Verified that `backutil purge` correctly prompts for confirmation and deletes repository data.
+- Verified that the daemon automatically unmounts backup sets when removed from `config.toml`.
+- Verified auto-reload functionality when the config file is edited.
+- All workspace tests pass.
+
+---
+
 ## [2026-01-27] — bugfix: fix false positive mount detection during uninstall
 
 **What changed:**

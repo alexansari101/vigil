@@ -18,7 +18,7 @@ pub enum ConfigError {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub global: GlobalConfig,
-    #[serde(rename = "backup_set")]
+    #[serde(rename = "backup_set", default)]
     pub backup_sets: Vec<BackupSet>,
 }
 

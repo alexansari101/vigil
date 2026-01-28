@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use backutil_lib::config::{load_config, Config};
 use backutil_lib::ipc::{Request, Response, ResponseData};
 use backutil_lib::paths;
+use notify::{Config as NotifyConfig, RecommendedWatcher, RecursiveMode, Watcher};
 use std::fs;
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -89,8 +90,29 @@ impl Daemon {
             UnixListener::bind(&self.socket_path).context("Failed to bind Unix socket")?;
 
         let (watcher_tx, mut watcher_rx) = tokio::sync::mpsc::channel(100);
-        let _watcher =
-            FileWatcher::new(&self.config, watcher_tx).context("Failed to start file watcher")?;
+        let mut _watcher = FileWatcher::new(&self.config, watcher_tx.clone())
+            .context("Failed to start file watcher")?;
+
+        let (reload_tx, mut reload_rx) = tokio::sync::mpsc::channel(1);
+
+        // Watch config file for changes
+        let config_path = std::env::var("BACKUTIL_CONFIG")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| paths::config_path());
+        let config_reload_tx = reload_tx.clone();
+        let mut _config_watcher = RecommendedWatcher::new(
+            move |res: std::result::Result<notify::Event, notify::Error>| {
+                if let Ok(event) = res {
+                    if !event.kind.is_access() {
+                        let _ = config_reload_tx.try_send(());
+                    }
+                }
+            },
+            NotifyConfig::default(),
+        )?;
+        if config_path.exists() {
+            _config_watcher.watch(&config_path, RecursiveMode::NonRecursive)?;
+        }
 
         info!("Daemon listening on {:?}", self.socket_path);
 
@@ -104,9 +126,10 @@ impl Daemon {
                     match accept_res {
                         Ok((stream, _)) => {
                             let shutdown_tx = self.shutdown_tx.clone();
+                            let reload_tx = reload_tx.clone();
                             let job_manager = self.job_manager.clone();
                             tokio::spawn(async move {
-                                if let Err(e) = handle_client(stream, shutdown_tx, job_manager).await {
+                                if let Err(e) = handle_client(stream, shutdown_tx, reload_tx, job_manager).await {
                                     error!("Error handling client: {}", e);
                                 }
                             });
@@ -136,6 +159,30 @@ impl Daemon {
                         }
                     }
                 }
+                _ = reload_rx.recv() => {
+                    info!("Reloading configuration...");
+                    match load_config() {
+                        Ok(new_config) => {
+                            if let Err(e) = self.job_manager.sync_config(&new_config).await {
+                                error!("Failed to sync job manager with new config: {}", e);
+                            } else {
+                                // Re-create watcher with new config
+                                match FileWatcher::new(&new_config, watcher_tx.clone()) {
+                                    Ok(new_watcher) => {
+                                        _watcher = new_watcher;
+                                        info!("Configuration reloaded and file watcher updated");
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to restart file watcher after config reload: {}", e);
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to load configuration for reload: {}", e);
+                        }
+                    }
+                }
                 _ = shutdown_rx.recv() => {
                     info!("Received shutdown request via IPC, shutting down...");
                     break;
@@ -155,6 +202,7 @@ impl Daemon {
 async fn handle_client(
     mut stream: UnixStream,
     shutdown_tx: broadcast::Sender<()>,
+    reload_tx: tokio::sync::mpsc::Sender<()>,
     job_manager: Arc<JobManager>,
 ) -> Result<()> {
     let (reader, mut writer) = stream.split();
@@ -264,6 +312,10 @@ async fn handle_client(
                             message: e.to_string(),
                         },
                     },
+                    Request::ReloadConfig => {
+                        let _ = reload_tx.send(()).await;
+                        Response::Ok(None)
+                    }
                 };
 
                 let json = serde_json::to_string(&response)? + "\n";
