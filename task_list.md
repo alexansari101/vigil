@@ -195,8 +195,6 @@ The `backutil status` command should give users a quick overview of their backup
 
 ---
 
----
-
 ## Completed Tasks
 
 | # | Task | Commit | Completed |
@@ -222,4 +220,4 @@ The `backutil status` command should give users a quick overview of their backup
 | 19 | CLI logs command | `762c0fb` | 2026-01-26 |
 | 20 | CLI bootstrap command | `060050c` | 2026-01-26 |
 | 21 | CLI disable/uninstall commands | `060050c` | 2026-01-26 |
-| 33 | Graceful backup set removal / purge command | `feature/graceful-removal` | 2026-01-28 |
+| 33 | Graceful backup set removal / purge command | `16bd0ef` | 2026-01-28 |
