@@ -265,17 +265,6 @@ Add global output format flags to all CLI commands. Per spec.md Section 13.
 
 ---
 
-### 40. [ ] Fix backup all sets timeout/hanging issue
-
-`backutil backup` (without specifying a set) may hang indefinitely waiting for completion responses. Per prd.md FR5.2.
-
-**Acceptance criteria:**
-
-- `backutil backup` completes reliably for all configured sets
-- Implement timeout or progress indicator
-- Consider `--no-wait` flag for fire-and-forget mode
-- Integration test covering multi-set backup
-
 ---
 
 ## Completed Tasks
@@ -305,3 +294,4 @@ Add global output format flags to all CLI commands. Per spec.md Section 13.
 | 21 | CLI disable/uninstall commands | `060050c` | 2026-01-26 |
 | 33 | Graceful backup set removal / purge command | `16bd0ef` | 2026-01-28 |
 | 31 | Daemon status persistence on startup | `3ea6303` | 2026-01-28 |
+| 40 | Fix backup all sets timeout/hanging issue | `4193567` | 2026-01-28 |

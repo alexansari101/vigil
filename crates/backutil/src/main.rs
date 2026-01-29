@@ -25,6 +25,12 @@ enum Commands {
     Backup {
         /// Name of the backup set to backup (null = all sets)
         set: Option<String>,
+        /// Do not wait for backup completion
+        #[arg(long)]
+        no_wait: bool,
+        /// Maximum time to wait for completion (seconds)
+        #[arg(long)]
+        timeout: Option<u64>,
     },
     /// Show health summary and recent snapshots
     Status,
@@ -81,8 +87,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::Init { set } => {
             handle_init(set).await?;
         }
-        Commands::Backup { set } => {
-            handle_backup(set).await?;
+        Commands::Backup {
+            set,
+            no_wait,
+            timeout,
+        } => {
+            handle_backup(set, no_wait, timeout).await?;
         }
         Commands::Status => {
             handle_status().await?;
@@ -198,7 +208,11 @@ async fn handle_init(set_name: Option<String>) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_backup(set_name: Option<String>) -> anyhow::Result<()> {
+async fn handle_backup(
+    set_name: Option<String>,
+    no_wait: bool,
+    timeout: Option<u64>,
+) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
     send_request(
         &mut stream,
@@ -208,11 +222,31 @@ async fn handle_backup(set_name: Option<String>) -> anyhow::Result<()> {
     )
     .await?;
 
-    let mut expected_completions = None;
+    let mut reader = BufReader::new(&mut stream);
+    let mut expected_sets = std::collections::HashSet::new();
     let mut completed_count = 0;
     let mut had_failures = false;
+    let mut initial_response_received = false;
 
-    while let Ok(response) = receive_response(&mut stream).await {
+    let timeout_duration = timeout.map(std::time::Duration::from_secs);
+    let start_instant = std::time::Instant::now();
+
+    loop {
+        if let Some(d) = timeout_duration {
+            if start_instant.elapsed() > d {
+                anyhow::bail!("Timeout waiting for backup completion");
+            }
+        }
+
+        let recv_timeout = std::time::Duration::from_millis(500);
+        let res = tokio::time::timeout(recv_timeout, receive_response(&mut reader)).await;
+
+        let response = match res {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => return Err(e),
+            Err(_) => continue, // Timeout, check global timeout and loop
+        };
+
         match response {
             Response::Ok(Some(data)) => match data {
                 ResponseData::BackupStarted {
@@ -220,22 +254,20 @@ async fn handle_backup(set_name: Option<String>) -> anyhow::Result<()> {
                 } => {
                     println!("Backup started for set '{}'.", started_set);
                     if set_name.is_some() {
-                        expected_completions = Some(1);
+                        expected_sets.insert(started_set);
                     }
+                    initial_response_received = true;
                 }
                 ResponseData::BackupsTriggered { started, failed } => {
                     for set in &started {
                         println!("Backup triggered for set '{}'.", set);
+                        expected_sets.insert(set.clone());
                     }
                     for (set, error) in &failed {
                         eprintln!("Failed to trigger backup for set '{}': {}", set, error);
-                    }
-                    if !failed.is_empty() {
                         had_failures = true;
                     }
-                    if set_name.is_none() {
-                        expected_completions = Some(started.len());
-                    }
+                    initial_response_received = true;
                 }
                 ResponseData::BackupComplete {
                     set_name: completed_set_name,
@@ -243,46 +275,39 @@ async fn handle_backup(set_name: Option<String>) -> anyhow::Result<()> {
                     added_bytes,
                     duration_secs,
                 } => {
-                    println!(
-                        "Backup complete for set '{}': snapshot {}, {} added in {:.1}s",
-                        completed_set_name,
-                        snapshot_id,
-                        format_size(added_bytes),
-                        duration_secs
-                    );
+                    if expected_sets.contains(&completed_set_name) {
+                        println!(
+                            "Backup complete for set '{}': snapshot {}, {} added in {:.1}s",
+                            completed_set_name,
+                            snapshot_id,
+                            format_size(added_bytes),
+                            duration_secs
+                        );
+                        completed_count += 1;
+                    }
 
-                    completed_count += 1;
-                    if let Some(expected) = expected_completions {
-                        if completed_count >= expected {
-                            break;
-                        }
-                    } else if let Some(target) = &set_name {
-                        // Fallback if we somehow missed BackupStarted but got BackupComplete for the requested set
-                        if target == &completed_set_name {
-                            break;
-                        }
+                    if initial_response_received && completed_count >= expected_sets.len() {
+                        break;
                     }
                 }
                 ResponseData::BackupFailed {
                     set_name: failed_set,
                     error,
                 } => {
-                    eprintln!("Backup failed for set '{}': {}", failed_set, error);
-                    had_failures = true;
-                    completed_count += 1;
-                    if let Some(expected) = expected_completions {
-                        if completed_count >= expected {
-                            break;
-                        }
-                    } else if let Some(target) = &set_name {
-                        if target == &failed_set {
-                            break;
-                        }
+                    if expected_sets.contains(&failed_set) {
+                        eprintln!("Backup failed for set '{}': {}", failed_set, error);
+                        had_failures = true;
+                        completed_count += 1;
+                    }
+                    if initial_response_received && completed_count >= expected_sets.len() {
+                        break;
                     }
                 }
                 _ => {}
             },
-            Response::Ok(None) => {}
+            Response::Ok(None) => {
+                // Some Ok(None) might be returned for other requests, but here we expect data
+            }
             Response::Error { code, message } => {
                 eprintln!("Error from daemon ({}): {}", code, message);
                 if code == backutil_lib::ipc::error_codes::RESTIC_ERROR
@@ -294,6 +319,14 @@ async fn handle_backup(set_name: Option<String>) -> anyhow::Result<()> {
                 }
             }
             Response::Pong => {}
+        }
+
+        if no_wait && initial_response_received {
+            break;
+        }
+
+        if initial_response_received && expected_sets.is_empty() {
+            break;
         }
     }
 
@@ -319,8 +352,9 @@ fn format_size(bytes: u64) -> String {
 
 async fn handle_status() -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
-    send_request(&mut stream, Request::Status).await?;
-    let response = receive_response(&mut stream).await?;
+    let mut reader = BufReader::new(&mut stream);
+    send_request(reader.get_mut(), Request::Status).await?;
+    let response = receive_response(&mut reader).await?;
 
     match response {
         Response::Ok(Some(ResponseData::Status { sets })) => {
@@ -352,7 +386,8 @@ async fn handle_mount(set_name: String, snapshot_id: Option<String>) -> anyhow::
     )
     .await?;
 
-    let response = receive_response(&mut stream).await?;
+    let mut reader = BufReader::new(&mut stream);
+    let response = receive_response(&mut reader).await?;
     match response {
         Response::Ok(Some(ResponseData::MountPath { path })) => {
             println!("Repository mounted successfully.");
@@ -387,7 +422,8 @@ async fn handle_unmount(set_name: Option<String>) -> anyhow::Result<()> {
     )
     .await?;
 
-    let response = receive_response(&mut stream).await?;
+    let mut reader = BufReader::new(&mut stream);
+    let response = receive_response(&mut reader).await?;
     match response {
         Response::Ok(_) => {
             if let Some(name) = set_name {
@@ -690,7 +726,8 @@ async fn handle_prune(set_name: Option<String>) -> anyhow::Result<()> {
     )
     .await?;
 
-    let response = receive_response(&mut stream).await?;
+    let mut reader = BufReader::new(&mut stream);
+    let response = receive_response(&mut reader).await?;
     match response {
         Response::Ok(Some(data)) => match data {
             ResponseData::PruneResult {
@@ -766,8 +803,9 @@ async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
     if target_path.is_none() {
         if let Ok(mut stream) = UnixStream::connect(paths::socket_path()).await {
             let _ = send_request(&mut stream, Request::Status).await;
+            let mut reader = BufReader::new(&mut stream);
             if let Ok(Response::Ok(Some(ResponseData::Status { sets }))) =
-                receive_response(&mut stream).await
+                receive_response(&mut reader).await
             {
                 if let Some(set) = sets.iter().find(|s| s.name == set_name) {
                     target_path = Some(set.target.to_string_lossy().to_string());
@@ -803,19 +841,20 @@ async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
     // 1. Unmount if mounted
     println!("Unmounting set '{}' if active...", set_name);
     if let Ok(mut stream) = UnixStream::connect(paths::socket_path()).await {
+        let mut reader = BufReader::new(&mut stream);
         let _ = send_request(
-            &mut stream,
+            reader.get_mut(),
             Request::Unmount {
                 set_name: Some(set_name.clone()),
             },
         )
         .await;
-        let _ = receive_response(&mut stream).await; // Ignore response details
+        let _ = receive_response(&mut reader).await; // Ignore response details
 
         // 2. Reload daemon config to stop tracking it (in case it's still there)
         println!("Refreshing daemon configuration...");
-        let _ = send_request(&mut stream, Request::ReloadConfig).await;
-        let _ = receive_response(&mut stream).await;
+        let _ = send_request(reader.get_mut(), Request::ReloadConfig).await;
+        let _ = receive_response(&mut reader).await;
     }
 
     // 3. Delete repository
@@ -880,8 +919,7 @@ async fn send_request(stream: &mut UnixStream, request: Request) -> anyhow::Resu
     Ok(())
 }
 
-async fn receive_response(stream: &mut UnixStream) -> anyhow::Result<Response> {
-    let mut reader = BufReader::new(stream);
+async fn receive_response<R: AsyncBufReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Response> {
     let mut line = String::new();
     reader.read_line(&mut line).await?;
     if line.is_empty() {

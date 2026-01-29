@@ -8,6 +8,33 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-28] — bugfix: fix backup hanging issue and add timeout/no-wait flags
+
+**What changed:**
+
+- Fixed a critical bug in the CLI where `BufReader` was being re-instantiated on every response read, causing data loss and potential hangs.
+- Improved `backutil backup` logic to correctly track and wait for all triggered backup sets.
+- Fixed a hang that occurred when `backutil backup` was run with no sets configured or when all sets were already busy.
+- Added `--no-wait` flag to `backutil backup` for "fire-and-forget" mode.
+- Added `--timeout <SECONDS>` flag to `backutil backup` to prevent indefinite waiting.
+- Added comprehensive integration tests in `crates/backutil/tests/cli_multi_test.rs` covering multi-set backups, timeout, and no-wait scenarios.
+
+**Why:**
+
+- Implements Task #40. Resolves reports of the CLI hanging indefinitely when multiple sets were involved or when the daemon was busy. Improves CLI UX by providing more control over backup wait times.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+- crates/backutil/tests/cli_multi_test.rs (new)
+
+**Testing notes:**
+
+- Verified that `backutil backup` (all sets) completes correctly even if some sets are busy or if no sets are configured.
+- Verified that `--no-wait` returns immediately after triggering backups.
+- Verified that `--timeout` correctly aborts if backups take too long.
+- All integration tests passed.
+
 ## [2026-01-28] — feature: daemon status persistence on startup
 
 **What changed:**
