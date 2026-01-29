@@ -18,3 +18,5 @@ rpassword.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 backutil-lib = { path = "../backutil-lib" }
+assert_cmd.workspace = true
+predicates.workspace = true

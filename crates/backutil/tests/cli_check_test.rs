@@ -5,7 +5,7 @@ use tempfile::NamedTempFile;
 fn get_binary_path() -> std::path::PathBuf {
     let mut path = std::env::current_exe().expect("failed to get current exe");
     path.pop(); // deps
-    if path.file_name().map_or(false, |n| n == "deps") {
+    if path.file_name().is_some_and(|n| n == "deps") {
         path.pop(); // debug/release
     }
     path.push("backutil");

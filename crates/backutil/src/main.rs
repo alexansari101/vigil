@@ -10,6 +10,14 @@ use tokio::net::UnixStream;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    /// Show results in JSON format
+    #[arg(long, global = true)]
+    json: bool,
+
+    /// Suppress non-essential output
+    #[arg(short, long, global = true)]
+    quiet: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -70,11 +78,7 @@ enum Commands {
         follow: bool,
     },
     /// List all defined backup sets
-    List {
-        /// Show results in JSON format
-        #[arg(long)]
-        json: bool,
-    },
+    List,
     /// Permanently delete a backup set and its repository
     Purge {
         /// Name of the backup set to delete
@@ -90,9 +94,6 @@ enum Commands {
         /// Limit the number of backups shown
         #[arg(long, default_value = "10")]
         limit: usize,
-        /// Show results in JSON format
-        #[arg(long)]
-        json: bool,
     },
     /// Check if configuration and repositories are healthy
     Check {
@@ -108,52 +109,55 @@ enum Commands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    let json = cli.json;
+    let quiet = cli.quiet;
+
     match cli.command {
         Commands::Init { set } => {
-            handle_init(set).await?;
+            handle_init(set, json, quiet).await?;
         }
         Commands::Backup {
             set,
             no_wait,
             timeout,
         } => {
-            handle_backup(set, no_wait, timeout).await?;
+            handle_backup(set, no_wait, timeout, json, quiet).await?;
         }
         Commands::Status => {
-            handle_status().await?;
+            handle_status(json, quiet).await?;
         }
         Commands::Mount { set, snapshot_id } => {
-            handle_mount(set, snapshot_id).await?;
+            handle_mount(set, snapshot_id, json, quiet).await?;
         }
         Commands::Unmount { set } => {
-            handle_unmount(set).await?;
+            handle_unmount(set, json, quiet).await?;
         }
         Commands::Prune { set } => {
-            handle_prune(set).await?;
+            handle_prune(set, json, quiet).await?;
         }
         Commands::Logs { follow } => {
-            handle_logs(follow).await?;
+            handle_logs(follow, json, quiet).await?;
         }
         Commands::Bootstrap => {
-            handle_bootstrap().await?;
+            handle_bootstrap(json, quiet).await?;
         }
         Commands::Disable => {
-            handle_disable().await?;
+            handle_disable(json, quiet).await?;
         }
         Commands::Uninstall { purge } => {
-            handle_uninstall(purge).await?;
+            handle_uninstall(purge, json, quiet).await?;
         }
         Commands::Purge { set, force } => {
-            handle_purge(set, force).await?;
+            handle_purge(set, force, json, quiet).await?;
         }
-        Commands::List { json } => {
-            handle_list(json).await?;
+        Commands::List => {
+            handle_list(json, quiet).await?;
         }
-        Commands::Snapshots { set, limit, json } => {
-            handle_snapshots(set, limit, json).await?;
+        Commands::Snapshots { set, limit } => {
+            handle_snapshots(set, limit, json, quiet).await?;
         }
         Commands::Check { set, config_only } => {
-            handle_check(set, config_only).await?;
+            handle_check(set, config_only, json, quiet).await?;
         }
         Commands::Tui => {
             println!("Command not yet implemented.");
@@ -163,12 +167,14 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_init(set_name: Option<String>) -> anyhow::Result<()> {
+async fn handle_init(set_name: Option<String>, json: bool, quiet: bool) -> anyhow::Result<()> {
     let config = backutil_lib::config::load_config().context("Failed to load configuration")?;
     let password_path = paths::password_path();
 
     if !password_path.exists() {
-        println!("Repository password file not found.");
+        if !quiet && !json {
+            println!("Repository password file not found.");
+        }
         let password = rpassword::prompt_password("Enter password for new repositories: ")?;
         let confirm = rpassword::prompt_password("Confirm password: ")?;
 
@@ -183,7 +189,9 @@ async fn handle_init(set_name: Option<String>) -> anyhow::Result<()> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::write(&password_path, password)?;
         std::fs::set_permissions(&password_path, std::fs::Permissions::from_mode(0o600))?;
-        println!("Password saved to {:?}", password_path);
+        if !quiet && !json {
+            println!("Password saved to {:?}", password_path);
+        }
     }
 
     let sets_to_init: Vec<_> = if let Some(name) = set_name {
@@ -198,17 +206,24 @@ async fn handle_init(set_name: Option<String>) -> anyhow::Result<()> {
     };
 
     if sets_to_init.is_empty() {
-        println!("No backup sets found to initialize.");
+        if json {
+            println!("[]");
+        } else if !quiet {
+            println!("No backup sets found to initialize.");
+        }
         return Ok(());
     }
 
+    let mut results = Vec::new();
     let mut failed = false;
 
     for set in sets_to_init {
-        println!(
-            "Initializing repository for set '{}' at '{}'...",
-            set.name, set.target
-        );
+        if !quiet && !json {
+            println!(
+                "Initializing repository for set '{}' at '{}'...",
+                set.name, set.target
+            );
+        }
 
         let output = tokio::process::Command::new("restic")
             .arg("init")
@@ -220,19 +235,40 @@ async fn handle_init(set_name: Option<String>) -> anyhow::Result<()> {
             .await?;
 
         if output.status.success() {
-            println!("Successfully initialized set '{}'.", set.name);
+            if !quiet && !json {
+                println!("Successfully initialized set '{}'.", set.name);
+            }
+            results.push(serde_json::json!({
+                "set": set.name,
+                "status": "initialized"
+            }));
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if stderr.contains("repository master key and config already initialized")
                 || stderr.contains("config already initialized")
                 || stderr.contains("config file already exists")
             {
-                println!("Set '{}' is already initialized.", set.name);
+                if !quiet && !json {
+                    println!("Set '{}' is already initialized.", set.name);
+                }
+                results.push(serde_json::json!({
+                    "set": set.name,
+                    "status": "already_initialized"
+                }));
             } else {
                 eprintln!("Failed to initialize set '{}': {}", set.name, stderr.trim());
                 failed = true;
+                results.push(serde_json::json!({
+                    "set": set.name,
+                    "status": "failed",
+                    "error": stderr.trim()
+                }));
             }
         }
+    }
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&results)?);
     }
 
     if failed {
@@ -246,6 +282,8 @@ async fn handle_backup(
     set_name: Option<String>,
     no_wait: bool,
     timeout: Option<u64>,
+    json: bool,
+    quiet: bool,
 ) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
     let mut reader = BufReader::new(&mut stream);
@@ -281,20 +319,29 @@ async fn handle_backup(
         };
 
         match response {
-            Response::Ok(Some(data)) => match data {
+            Response::Ok(Some(ref data)) => match data {
                 ResponseData::BackupStarted {
                     set_name: started_set,
                 } => {
-                    println!("Backup started for set '{}'.", started_set);
-                    expected_sets.insert(started_set);
+                    if json {
+                        println!("{}", serde_json::to_string(data)?);
+                    } else if !quiet {
+                        println!("Backup started for set '{}'.", started_set);
+                    }
+                    expected_sets.insert(started_set.clone());
                     initial_response_received = true;
                 }
                 ResponseData::BackupsTriggered { started, failed } => {
-                    for set in &started {
-                        println!("Backup triggered for set '{}'.", set);
+                    if json {
+                        println!("{}", serde_json::to_string(data)?);
+                    }
+                    for set in started {
+                        if !quiet && !json {
+                            println!("Backup triggered for set '{}'.", set);
+                        }
                         expected_sets.insert(set.clone());
                     }
-                    for (set, error) in &failed {
+                    for (set, error) in failed {
                         eprintln!("Failed to trigger backup for set '{}': {}", set, error);
                         had_failures = true;
                     }
@@ -306,14 +353,18 @@ async fn handle_backup(
                     added_bytes,
                     duration_secs,
                 } => {
-                    if expected_sets.contains(&completed_set_name) {
-                        println!(
-                            "Backup complete for set '{}': snapshot {}, {} added in {:.1}s",
-                            completed_set_name,
-                            snapshot_id,
-                            format_size(added_bytes),
-                            duration_secs
-                        );
+                    if expected_sets.contains(completed_set_name) {
+                        if json {
+                            println!("{}", serde_json::to_string(data)?);
+                        } else if !quiet {
+                            println!(
+                                "Backup complete for set '{}': snapshot {}, {} added in {:.1}s",
+                                completed_set_name,
+                                snapshot_id,
+                                format_size(*added_bytes),
+                                duration_secs
+                            );
+                        }
                         completed_count += 1;
                     }
 
@@ -325,7 +376,10 @@ async fn handle_backup(
                     set_name: failed_set,
                     error,
                 } => {
-                    if expected_sets.contains(&failed_set) {
+                    if expected_sets.contains(failed_set) {
+                        if json {
+                            println!("{}", serde_json::to_string(data)?);
+                        }
                         eprintln!("Backup failed for set '{}': {}", failed_set, error);
                         had_failures = true;
                         completed_count += 1;
@@ -381,7 +435,7 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-async fn handle_status() -> anyhow::Result<()> {
+async fn handle_status(json: bool, quiet: bool) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
     let mut reader = BufReader::new(&mut stream);
     send_request(reader.get_mut(), Request::Status).await?;
@@ -389,7 +443,11 @@ async fn handle_status() -> anyhow::Result<()> {
 
     match response {
         Response::Ok(Some(ResponseData::Status { sets })) => {
-            display_status(sets);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&sets)?);
+            } else if !quiet {
+                display_status(sets);
+            }
         }
         Response::Ok(_) => {
             println!("Unexpected response from daemon.");
@@ -406,7 +464,12 @@ async fn handle_status() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_mount(set_name: String, snapshot_id: Option<String>) -> anyhow::Result<()> {
+async fn handle_mount(
+    set_name: String,
+    snapshot_id: Option<String>,
+    json: bool,
+    quiet: bool,
+) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
     let mut reader = BufReader::new(&mut stream);
     send_request(
@@ -420,16 +483,24 @@ async fn handle_mount(set_name: String, snapshot_id: Option<String>) -> anyhow::
 
     let response = receive_response(&mut reader).await?;
     match response {
-        Response::Ok(Some(ResponseData::MountPath { path })) => {
-            println!("Repository mounted successfully.");
-            println!();
-            println!("Browse your snapshots at: {}/", path);
-            println!("  by ID:        {}/ids/<snapshot-id>/", path);
-            println!("  by timestamp: {}/snapshots/<timestamp>/", path);
-            println!("  by host:      {}/hosts/<hostname>/", path);
-            println!("  by tags:      {}/tags/<tag>/", path);
-            println!();
-            println!("Use `cp` to recover files, then `backutil unmount` when done.");
+        Response::Ok(Some(ref data)) => {
+            if let ResponseData::MountPath { ref path } = data {
+                if json {
+                    println!("{}", serde_json::to_string(data)?);
+                } else if !quiet {
+                    println!("Repository mounted successfully.");
+                    println!();
+                    println!("Browse your snapshots at: {}/", path);
+                    println!("  by ID:        {}/ids/<snapshot-id>/", path);
+                    println!("  by timestamp: {}/snapshots/<timestamp>/", path);
+                    println!("  by host:      {}/hosts/<hostname>/", path);
+                    println!("  by tags:      {}/tags/<tag>/", path);
+                    println!();
+                    println!("Use `cp` to recover files, then `backutil unmount` when done.");
+                }
+            } else {
+                println!("Unexpected response from daemon.");
+            }
         }
         Response::Error { code, message } => {
             eprintln!("Error mounting snapshot ({}): {}", code, message);
@@ -443,7 +514,7 @@ async fn handle_mount(set_name: String, snapshot_id: Option<String>) -> anyhow::
     Ok(())
 }
 
-async fn handle_unmount(set_name: Option<String>) -> anyhow::Result<()> {
+async fn handle_unmount(set_name: Option<String>, json: bool, quiet: bool) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
     let mut reader = BufReader::new(&mut stream);
     send_request(
@@ -457,10 +528,20 @@ async fn handle_unmount(set_name: Option<String>) -> anyhow::Result<()> {
     let response = receive_response(&mut reader).await?;
     match response {
         Response::Ok(_) => {
-            if let Some(name) = set_name {
-                println!("Successfully unmounted set '{}'.", name);
-            } else {
-                println!("Successfully unmounted all sets.");
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "success",
+                        "unmounted": set_name.as_deref().unwrap_or("all")
+                    })
+                );
+            } else if !quiet {
+                if let Some(name) = set_name {
+                    println!("Successfully unmounted set '{}'.", name);
+                } else {
+                    println!("Successfully unmounted all sets.");
+                }
             }
         }
         Response::Error { code, message } => {
@@ -475,7 +556,7 @@ async fn handle_unmount(set_name: Option<String>) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_logs(follow: bool) -> anyhow::Result<()> {
+async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<()> {
     use std::io::Write;
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt};
 
@@ -557,8 +638,10 @@ async fn handle_logs(follow: bool) -> anyhow::Result<()> {
     }
 }
 
-async fn handle_bootstrap() -> anyhow::Result<()> {
-    println!("Bootstrapping backutil...");
+async fn handle_bootstrap(json: bool, quiet: bool) -> anyhow::Result<()> {
+    if !quiet && !json {
+        println!("Bootstrapping backutil...");
+    }
 
     // 1. Dependency check
     let deps = ["restic", "fusermount3", "notify-send"];
@@ -578,7 +661,7 @@ async fn handle_bootstrap() -> anyhow::Result<()> {
         }
     }
 
-    if !missing.is_empty() {
+    if !missing.is_empty() && !quiet && !json {
         println!("Warning: Missing dependencies: {}", missing.join(", "));
         println!("Please install them to use all features.");
     }
@@ -604,10 +687,14 @@ WantedBy=default.target
 "#;
 
     std::fs::write(&unit_path, unit_content)?;
-    println!("Generated systemd unit at {:?}", unit_path);
+    if !quiet && !json {
+        println!("Generated systemd unit at {:?}", unit_path);
+    }
 
     // 3. systemctl --user daemon-reload
-    println!("Reloading systemd daemon...");
+    if !quiet && !json {
+        println!("Reloading systemd daemon...");
+    }
     let status = tokio::process::Command::new("systemctl")
         .arg("--user")
         .arg("daemon-reload")
@@ -619,7 +706,9 @@ WantedBy=default.target
     }
 
     // 4. systemctl --user enable --now backutil-daemon.service
-    println!("Enabling and starting backutil-daemon service...");
+    if !quiet && !json {
+        println!("Enabling and starting backutil-daemon service...");
+    }
     let status = tokio::process::Command::new("systemctl")
         .arg("--user")
         .arg("enable")
@@ -629,7 +718,11 @@ WantedBy=default.target
         .await?;
 
     if status.success() {
-        println!("Successfully bootstrapped backutil-daemon.");
+        if json {
+            println!("{}", serde_json::json!({ "status": "bootstrapped" }));
+        } else if !quiet {
+            println!("Successfully bootstrapped backutil-daemon.");
+        }
     } else {
         anyhow::bail!("Failed to enable/start backutil-daemon service.");
     }
@@ -662,9 +755,11 @@ fn warn_if_mounts_active() {
     }
 }
 
-async fn handle_disable() -> anyhow::Result<()> {
-    warn_if_mounts_active();
-    println!("Stopping and disabling backutil-daemon service...");
+async fn handle_disable(json: bool, quiet: bool) -> anyhow::Result<()> {
+    if !quiet && !json {
+        warn_if_mounts_active();
+        println!("Stopping and disabling backutil-daemon service...");
+    }
     let status = tokio::process::Command::new("systemctl")
         .arg("--user")
         .arg("disable")
@@ -674,7 +769,11 @@ async fn handle_disable() -> anyhow::Result<()> {
         .await?;
 
     if status.success() {
-        println!("Successfully disabled backutil-daemon.");
+        if json {
+            println!("{}", serde_json::json!({ "status": "disabled" }));
+        } else if !quiet {
+            println!("Successfully disabled backutil-daemon.");
+        }
     } else {
         anyhow::bail!("Failed to disable backutil-daemon service.");
     }
@@ -682,9 +781,11 @@ async fn handle_disable() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_uninstall(purge: bool) -> anyhow::Result<()> {
-    warn_if_mounts_active();
-    println!("Uninstalling backutil...");
+async fn handle_uninstall(purge: bool, json: bool, quiet: bool) -> anyhow::Result<()> {
+    if !quiet && !json {
+        warn_if_mounts_active();
+        println!("Uninstalling backutil...");
+    }
 
     // 1. Stop and disable service
     let _ = tokio::process::Command::new("systemctl")
@@ -705,7 +806,9 @@ async fn handle_uninstall(purge: bool) -> anyhow::Result<()> {
     let unit_path = paths::systemd_unit_path();
     if unit_path.exists() {
         std::fs::remove_file(&unit_path)?;
-        println!("Removed systemd unit {:?}", unit_path);
+        if !quiet && !json {
+            println!("Removed systemd unit {:?}", unit_path);
+        }
     }
 
     // 3. daemon-reload
@@ -721,7 +824,9 @@ async fn handle_uninstall(purge: bool) -> anyhow::Result<()> {
         let config_dir = paths::config_dir();
         if config_dir.exists() {
             std::fs::remove_dir_all(&config_dir)?;
-            println!("Removed configuration directory {:?}", config_dir);
+            if !quiet && !json {
+                println!("Removed configuration directory {:?}", config_dir);
+            }
         }
 
         let data_dir = paths::log_path()
@@ -739,15 +844,24 @@ async fn handle_uninstall(purge: bool) -> anyhow::Result<()> {
 
         if data_dir.exists() {
             std::fs::remove_dir_all(&data_dir)?;
-            println!("Removed data directory {:?}", data_dir);
+            if !quiet && !json {
+                println!("Removed data directory {:?}", data_dir);
+            }
         }
     }
 
-    println!("Uninstall complete.");
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({ "status": "uninstalled", "purged": purge })
+        );
+    } else if !quiet {
+        println!("Uninstall complete.");
+    }
     Ok(())
 }
 
-async fn handle_prune(set_name: Option<String>) -> anyhow::Result<()> {
+async fn handle_prune(set_name: Option<String>, json: bool, quiet: bool) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
     let mut reader = BufReader::new(&mut stream);
     send_request(
@@ -760,38 +874,46 @@ async fn handle_prune(set_name: Option<String>) -> anyhow::Result<()> {
 
     let response = receive_response(&mut reader).await?;
     match response {
-        Response::Ok(Some(data)) => match data {
+        Response::Ok(Some(ref data)) => match data {
             ResponseData::PruneResult {
                 set_name,
                 reclaimed_bytes,
             } => {
-                println!(
-                    "Pruned set '{}': {} reclaimed",
-                    set_name,
-                    format_size(reclaimed_bytes)
-                );
+                if json {
+                    println!("{}", serde_json::to_string(data)?);
+                } else if !quiet {
+                    println!(
+                        "Pruned set '{}': {} reclaimed",
+                        set_name,
+                        format_size(*reclaimed_bytes)
+                    );
+                }
             }
             ResponseData::PrunesTriggered { succeeded, failed } => {
-                if succeeded.is_empty() && failed.is_empty() {
-                    println!("No backup sets found to prune.");
-                    return Ok(());
+                if json {
+                    println!("{}", serde_json::to_string(data)?);
+                } else if !quiet {
+                    if succeeded.is_empty() && failed.is_empty() {
+                        println!("No backup sets found to prune.");
+                        return Ok(());
+                    }
+
+                    println!("{:<15} {:<15}", "NAME", "RECLAIMED");
+                    println!("{}", "-".repeat(31));
+
+                    let mut total_reclaimed = 0;
+                    for (name, reclaimed) in succeeded {
+                        println!("{:<15} {:<15}", name, format_size(*reclaimed));
+                        total_reclaimed += reclaimed;
+                    }
+
+                    for (name, error) in failed {
+                        println!("{:<15} Error: {:<15}", name, error);
+                    }
+
+                    println!("{}", "-".repeat(31));
+                    println!("{:<15} {:<15}", "TOTAL", format_size(total_reclaimed));
                 }
-
-                println!("{:<15} {:<15}", "NAME", "RECLAIMED");
-                println!("{}", "-".repeat(31));
-
-                let mut total_reclaimed = 0;
-                for (name, reclaimed) in &succeeded {
-                    println!("{:<15} {:<15}", name, format_size(*reclaimed));
-                    total_reclaimed += reclaimed;
-                }
-
-                for (name, error) in &failed {
-                    println!("{:<15} Error: {:<15}", name, error);
-                }
-
-                println!("{}", "-".repeat(31));
-                println!("{:<15} {:<15}", "TOTAL", format_size(total_reclaimed));
 
                 if !failed.is_empty() {
                     anyhow::bail!("One or more prune operations failed.");
@@ -817,40 +939,76 @@ async fn handle_prune(set_name: Option<String>) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_check(set_name: Option<String>, config_only: bool) -> anyhow::Result<()> {
+async fn handle_check(
+    set_name: Option<String>,
+    config_only: bool,
+    json: bool,
+    quiet: bool,
+) -> anyhow::Result<()> {
     // 1. Config Validation
     let config = match backutil_lib::config::load_config() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("✗ Configuration invalid: {}", e);
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "error", "error": e.to_string(), "code": 2 })
+                );
+            } else {
+                eprintln!("✗ Configuration invalid: {}", e);
+            }
             std::process::exit(2);
         }
     };
 
-    println!(
-        "✓ Configuration valid: {} backup sets defined",
-        config.backup_sets.len()
-    );
+    if !json && !quiet {
+        println!(
+            "✓ Configuration valid: {} backup sets defined",
+            config.backup_sets.len()
+        );
+    }
+
+    let password_path = paths::password_path();
+    let password_exists = password_path.exists();
 
     if config_only {
-        // Also check if password file exists, as per spec this is part of basic config/setup check
-        let password_path = paths::password_path();
-        if password_path.exists() {
-            println!("✓ Password file exists");
-        } else {
-            println!("✗ Password file missing at {:?}", password_path);
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "status": "ok",
+                    "config_valid": true,
+                    "backup_sets_count": config.backup_sets.len(),
+                    "password_file_exists": password_exists
+                })
+            );
+        } else if !quiet {
+            if password_exists {
+                println!("✓ Password file exists");
+            } else {
+                println!("✗ Password file missing at {:?}", password_path);
+            }
+        }
+
+        if !password_exists {
             std::process::exit(2);
         }
         return Ok(());
     }
 
     // 2. Repo Validation
-    let password_path = paths::password_path();
-    if !password_path.exists() {
-        eprintln!("✗ Password file missing at {:?}", password_path);
-        eprintln!("  Run `backutil init` to create it.");
+    if !password_exists {
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "error", "error": "Password file missing", "code": 2 })
+            );
+        } else {
+            eprintln!("✗ Password file missing at {:?}", password_path);
+            eprintln!("  Run `backutil init` to create it.");
+        }
         std::process::exit(2);
-    } else {
+    } else if !json && !quiet {
         println!("✓ Password file exists");
     }
 
@@ -866,16 +1024,26 @@ async fn handle_check(set_name: Option<String>, config_only: bool) -> anyhow::Re
     };
 
     if sets_to_check.is_empty() {
-        println!("No backup sets found to check.");
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({ "status": "ok", "sets_checked": 0 })
+            );
+        } else if !quiet {
+            println!("No backup sets found to check.");
+        }
         return Ok(());
     }
 
     let mut failed = false;
+    let mut results = Vec::new();
 
     for set in sets_to_check {
-        print!("Checking '{}'... ", set.name);
-        use std::io::Write;
-        std::io::stdout().flush()?;
+        if !json && !quiet {
+            print!("Checking '{}'... ", set.name);
+            use std::io::Write;
+            std::io::stdout().flush()?;
+        }
 
         // Use `restic snapshots --latest 1` as a quick check for repo accessibility
         let output = tokio::process::Command::new("restic")
@@ -893,20 +1061,39 @@ async fn handle_check(set_name: Option<String>, config_only: bool) -> anyhow::Re
         match output {
             Ok(output) => {
                 if output.status.success() {
-                    println!("\r✓ {}: Repository accessible", set.name);
+                    if !json && !quiet {
+                        println!("\r✓ {}: Repository accessible", set.name);
+                    }
+                    results.push(serde_json::json!({ "set": set.name, "accessible": true }));
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    println!("\r✗ {}: Repository check failed", set.name);
-                    eprintln!("  Error: {}", stderr.trim());
+                    if !json {
+                        println!("\r✗ {}: Repository check failed", set.name);
+                        eprintln!("  Error: {}", stderr.trim());
+                    }
+                    results.push(serde_json::json!({ "set": set.name, "accessible": false, "error": stderr.trim() }));
                     failed = true;
                 }
             }
             Err(e) => {
-                println!("\r✗ {}: Failed to execute restic", set.name);
-                eprintln!("  Error: {}", e);
+                if !json {
+                    println!("\r✗ {}: Failed to execute restic", set.name);
+                    eprintln!("  Error: {}", e);
+                }
+                results.push(serde_json::json!({ "set": set.name, "accessible": false, "error": e.to_string() }));
                 failed = true;
             }
         }
+    }
+
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": if failed { "error" } else { "ok" },
+                "results": results
+            })
+        );
     }
 
     if failed {
@@ -916,14 +1103,22 @@ async fn handle_check(set_name: Option<String>, config_only: bool) -> anyhow::Re
     Ok(())
 }
 
-async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
+async fn handle_purge(
+    set_name: String,
+    force: bool,
+    json: bool,
+    quiet: bool,
+) -> anyhow::Result<()> {
     let config_res = backutil_lib::config::load_config();
     let mut target_path = None;
 
     if let Ok(config) = config_res {
         if let Some(set) = config.backup_sets.iter().find(|s| s.name == set_name) {
             if !force {
-                anyhow::bail!("Backup set '{}' is still present in config.toml. Remove it first or use --force.", set_name);
+                if json || quiet {
+                    anyhow::bail!("Purge requires --force when running in --json or --quiet mode");
+                }
+                println!("Backup set '{}' is still present in config.toml. Remove it first or use --force.", set_name);
             }
             target_path = Some(set.target.clone());
         }
@@ -952,6 +1147,9 @@ async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
     })?;
 
     if !force {
+        if json || quiet {
+            anyhow::bail!("Purge requires --force when running in --json or --quiet mode");
+        }
         println!(
             "WARNING: This will permanently delete ALL backup data for '{}' at '{}' and can NOT be undone!",
             set_name, target_path
@@ -968,8 +1166,11 @@ async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
         }
     }
 
+    if !quiet && !json {
+        println!("Unmounting set '{}' if active...", set_name);
+    }
+
     // 1. Unmount if mounted
-    println!("Unmounting set '{}' if active...", set_name);
     if let Ok(mut stream) = UnixStream::connect(paths::socket_path()).await {
         let mut reader = BufReader::new(&mut stream);
         let _ = send_request(
@@ -982,13 +1183,17 @@ async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
         let _ = receive_response(&mut reader).await; // Ignore response details
 
         // 2. Reload daemon config to stop tracking it (in case it's still there)
-        println!("Refreshing daemon configuration...");
+        if !quiet && !json {
+            println!("Refreshing daemon configuration...");
+        }
         let _ = send_request(reader.get_mut(), Request::ReloadConfig).await;
         let _ = receive_response(&mut reader).await;
     }
 
     // 3. Delete repository
-    println!("Deleting Restic repository at '{}'...", target_path);
+    if !quiet && !json {
+        println!("Deleting Restic repository at '{}'...", target_path);
+    }
     let path = std::path::Path::new(&target_path);
     if path.exists() {
         if path.is_dir() {
@@ -999,14 +1204,16 @@ async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
                 target_path
             );
         }
-    } else {
+    } else if !quiet && !json {
         println!("Repository directory does not exist, skipping.");
     }
 
     // 4. Delete mount point
     let mount_path = paths::mount_path(&set_name);
     if mount_path.exists() {
-        println!("Deleting mount point at {:?}...", mount_path);
+        if !quiet && !json {
+            println!("Deleting mount point at {:?}...", mount_path);
+        }
         // We try a few times because unmount might take a moment to propagate in the kernel
         let mut success = false;
         for _ in 0..5 {
@@ -1016,7 +1223,7 @@ async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
             }
             tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
-        if !success {
+        if !success && !quiet && !json {
             println!(
                 "Warning: Could not remove mount point directory {:?}. It might still be busy.",
                 mount_path
@@ -1024,11 +1231,24 @@ async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
         }
     }
 
-    println!("Successfully purged backup set '{}'.", set_name);
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({ "status": "purged", "set": set_name, "target": target_path })
+        );
+    } else if !quiet {
+        println!("Successfully purged backup set '{}'.", set_name);
+    }
+
     Ok(())
 }
 
-async fn handle_snapshots(set_name: String, limit: usize, json: bool) -> anyhow::Result<()> {
+async fn handle_snapshots(
+    set_name: String,
+    limit: usize,
+    json: bool,
+    quiet: bool,
+) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
     let mut reader = BufReader::new(&mut stream);
     send_request(
@@ -1045,7 +1265,7 @@ async fn handle_snapshots(set_name: String, limit: usize, json: bool) -> anyhow:
         Response::Ok(Some(ResponseData::Snapshots { snapshots })) => {
             if json {
                 println!("{}", serde_json::to_string_pretty(&snapshots)?);
-            } else {
+            } else if !quiet {
                 if snapshots.is_empty() {
                     println!("No snapshots found for set '{}'.", set_name);
                     return Ok(());
@@ -1087,7 +1307,7 @@ async fn handle_snapshots(set_name: String, limit: usize, json: bool) -> anyhow:
     Ok(())
 }
 
-async fn handle_list(json: bool) -> anyhow::Result<()> {
+async fn handle_list(json: bool, quiet: bool) -> anyhow::Result<()> {
     let config = match backutil_lib::config::load_config() {
         Ok(cfg) => cfg,
         Err(e) => {
@@ -1098,7 +1318,7 @@ async fn handle_list(json: bool) -> anyhow::Result<()> {
 
     if json {
         println!("{}", serde_json::to_string_pretty(&config)?);
-    } else {
+    } else if !quiet {
         if config.backup_sets.is_empty() {
             println!("No backup sets configured.");
             return Ok(());

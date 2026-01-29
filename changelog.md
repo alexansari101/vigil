@@ -8,6 +8,35 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-29] — feature: global --quiet and --json flags
+
+**What changed:**
+
+- Added global `--quiet` (`-q`) and `--json` flags to the `backutil` CLI.
+- Implemented JSON output for `status`, `backup`, `prune`, `snapshots`, `list`, `check`, `mount`, `unmount`, `bootstrap`, `disable`, and `uninstall`.
+- Implemented quiet mode for all commands to suppress non-essential progress and success messages.
+- Added integration tests for global flags in `crates/backutil/tests/cli_global_flags_test.rs`.
+- Updated `Cargo.toml` with `assert_cmd` and `predicates` for CLI testing.
+
+**Why:**
+
+- Implements Task #39 and FR5.2. Allows for machine-readable output and less noisy logs when running in automated environments.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+- crates/backutil/Cargo.toml (modified)
+- Cargo.toml (modified)
+- crates/backutil/tests/cli_global_flags_test.rs (new)
+
+**Testing notes:**
+
+- Verified `--json` output for `list`, `check`, and `status`.
+- Verified `--quiet` suppresses output for `list` and `check`.
+- Verified that `--json` still works correctly when placed after a subcommand due to `global = true` in `clap`.
+
+---
+
 ## [2026-01-29] — feature: plain english help text
 
 **What changed:**
