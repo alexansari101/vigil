@@ -8,6 +8,34 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-29] — feature: cli snapshots command
+
+**What changed:**
+
+- Implemented `backutil snapshots <SET>` command to list available snapshots.
+- Added support for `--limit N` and `--json` flags.
+- Enhanced `SnapshotInfo` shared type to include `total_bytes`.
+- Updated daemon's restic executor to parse snapshot size from restic JSON output.
+- Improved tabular output to display snapshot ID, date, human-readable size, and paths.
+
+**Why:**
+
+- Implements Task #35. Provides users with a way to view their snapshot history and storage usage without requiring restic command knowledge or mounting repositories.
+
+**Files affected:**
+
+- crates/backutil-lib/src/types.rs (modified)
+- crates/backutil-daemon/src/executor.rs (modified)
+- crates/backutil/src/main.rs (modified)
+
+**Testing notes:**
+
+- Verified tabular output with real restic snapshots, including correct size formatting.
+- Verified `--json` output includes all fields, especially the new `total_bytes`.
+- Verified `--limit` correctly restricts the number of snapshots returned by the daemon.
+
+---
+
 ## [2026-01-28] — review: fix integration test isolation and short snapshot IDs
 
 **What changed:**

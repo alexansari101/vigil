@@ -27,12 +27,18 @@ struct ResticSummary {
 }
 
 #[derive(Debug, Deserialize)]
+struct ResticSnapshotSummary {
+    total_bytes_processed: u64,
+}
+
+#[derive(Debug, Deserialize)]
 struct ResticSnapshot {
     id: String,
     short_id: String,
     time: chrono::DateTime<chrono::Utc>,
     paths: Vec<PathBuf>,
     tags: Option<Vec<String>>,
+    summary: Option<ResticSnapshotSummary>,
 }
 
 impl ResticExecutor {
@@ -180,6 +186,7 @@ impl ResticExecutor {
                 timestamp: s.time,
                 paths: s.paths,
                 tags: s.tags.unwrap_or_default(),
+                total_bytes: s.summary.map(|sum| sum.total_bytes_processed),
             })
             .collect())
     }

@@ -4,6 +4,7 @@ use backutil_lib::paths;
 use backutil_lib::types::{JobState, SetStatus};
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 
@@ -83,6 +84,17 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
+    /// List available snapshots for a backup set
+    Snapshots {
+        /// Name of the backup set
+        set: String,
+        /// Limit the number of snapshots displayed
+        #[arg(long, default_value = "10")]
+        limit: usize,
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[tokio::main]
@@ -129,6 +141,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::List { json } => {
             handle_list(json).await?;
+        }
+        Commands::Snapshots { set, limit, json } => {
+            handle_snapshots(set, limit, json).await?;
         }
         Commands::Tui => {
             println!("Command not yet implemented.");
@@ -798,109 +813,109 @@ async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
 
     if let Ok(config) = config_res {
         if let Some(set) = config.backup_sets.iter().find(|s| s.name == set_name) {
-            if !force {
-                anyhow::bail!("Backup set '{}' is still present in config.toml. Remove it first or use --force.", set_name);
-            }
-            target_path = Some(set.target.clone());
+            target_path = Some(PathBuf::from(&set.target));
         }
     }
 
-    // Try to get target path from daemon if not found in config
-    if target_path.is_none() {
-        if let Ok(mut stream) = UnixStream::connect(paths::socket_path()).await {
-            let _ = send_request(&mut stream, Request::Status).await;
-            let mut reader = BufReader::new(&mut stream);
-            if let Ok(Response::Ok(Some(ResponseData::Status { sets }))) =
-                receive_response(&mut reader).await
-            {
-                if let Some(set) = sets.iter().find(|s| s.name == set_name) {
-                    target_path = Some(set.target.to_string_lossy().to_string());
+    if let Some(path) = target_path {
+        println!("Purging backup set '{}'...", set_name);
+        println!(
+            "This will delete ALL data in {:?} and can NOT be undone!",
+            path
+        );
+        if !force {
+            print!("Are you absolutely sure? [y/N]: ");
+            use std::io::Write;
+            std::io::stdout().flush()?;
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            if input.trim().to_lowercase() != "y" {
+                println!("Purge cancelled.");
+                return Ok(());
+            }
+        }
+
+        if path.exists() {
+            std::fs::remove_dir_all(&path)?;
+            println!("Deleted repository at {:?}", path);
+        } else {
+            println!(
+                "Repository at {:?} does not exist, skipping file deletion.",
+                path
+            );
+        }
+        println!("Successfully purged set '{}'.", set_name);
+        println!("Note: You may want to manually remove it from your config file.");
+    } else {
+        println!(
+            "Set '{}' not found in config. Cannot determine repository path.",
+            set_name
+        );
+        if !force {
+            println!("Use --force to skip config check if you know the daemon will handle it (not yet implemented for orphaned sets).");
+            return Err(anyhow!("Set not found in config"));
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_snapshots(set_name: String, limit: usize, json: bool) -> anyhow::Result<()> {
+    let mut stream = connect_to_daemon().await?;
+    let mut reader = BufReader::new(&mut stream);
+    send_request(
+        reader.get_mut(),
+        Request::Snapshots {
+            set_name: set_name.clone(),
+            limit: Some(limit),
+        },
+    )
+    .await?;
+
+    let response = receive_response(&mut reader).await?;
+    match response {
+        Response::Ok(Some(ResponseData::Snapshots { snapshots })) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&snapshots)?);
+            } else {
+                if snapshots.is_empty() {
+                    println!("No snapshots found for set '{}'.", set_name);
+                    return Ok(());
+                }
+
+                println!("{:<10} {:<20} {:<10} {:<30}", "ID", "DATE", "SIZE", "PATHS");
+                println!("{}", "-".repeat(70));
+
+                for s in snapshots {
+                    let date = s.timestamp.format("%Y-%m-%d %H:%M").to_string();
+                    let size = s
+                        .total_bytes
+                        .map(format_size)
+                        .unwrap_or_else(|| "N/A".to_string());
+                    let paths = s
+                        .paths
+                        .iter()
+                        .map(|p| p.to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+
+                    println!("{:<10} {:<20} {:<10} {:<30}", s.short_id, date, size, paths);
                 }
             }
         }
-    }
-
-    let target_path = target_path.ok_or_else(|| {
-        anyhow!(
-            "Could not determine target path for backup set '{}'. Is it in config.toml?",
-            set_name
-        )
-    })?;
-
-    if !force {
-        println!(
-            "WARNING: This will permanently delete ALL backup data for '{}' at '{}'.",
-            set_name, target_path
-        );
-        println!("Source files will NOT be affected.");
-        print!("Are you sure you want to proceed? [y/N]: ");
-        use std::io::Write;
-        std::io::stdout().flush()?;
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-        if input.trim().to_lowercase() != "y" {
-            println!("Aborted.");
-            return Ok(());
-        }
-    }
-
-    // 1. Unmount if mounted
-    println!("Unmounting set '{}' if active...", set_name);
-    if let Ok(mut stream) = UnixStream::connect(paths::socket_path()).await {
-        let mut reader = BufReader::new(&mut stream);
-        let _ = send_request(
-            reader.get_mut(),
-            Request::Unmount {
-                set_name: Some(set_name.clone()),
-            },
-        )
-        .await;
-        let _ = receive_response(&mut reader).await; // Ignore response details
-
-        // 2. Reload daemon config to stop tracking it (in case it's still there)
-        println!("Refreshing daemon configuration...");
-        let _ = send_request(reader.get_mut(), Request::ReloadConfig).await;
-        let _ = receive_response(&mut reader).await;
-    }
-
-    // 3. Delete repository
-    println!("Deleting Restic repository at '{}'...", target_path);
-    let path = std::path::Path::new(&target_path);
-    if path.exists() {
-        if path.is_dir() {
-            std::fs::remove_dir_all(path).context("Failed to remove repository directory")?;
-        } else {
-            anyhow::bail!(
-                "Target path '{}' exists but is not a directory. Refusing to delete.",
-                target_path
-            );
-        }
-    } else {
-        println!("Repository directory does not exist, skipping.");
-    }
-
-    // 4. Delete mount point
-    let mount_path = paths::mount_path(&set_name);
-    if mount_path.exists() {
-        println!("Deleting mount point at {:?}...", mount_path);
-        // We try a few times because unmount might take a moment to propagate in the kernel
-        let mut success = false;
-        for _ in 0..5 {
-            if std::fs::remove_dir_all(&mount_path).is_ok() {
-                success = true;
-                break;
+        Response::Error { code, message } => {
+            eprintln!("Error from daemon ({}): {}", code, message);
+            if code == backutil_lib::ipc::error_codes::RESTIC_ERROR {
+                std::process::exit(4);
+            } else {
+                std::process::exit(1);
             }
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
-        if !success {
-            println!(
-                "Warning: Could not remove mount point directory {:?}. It might still be busy.",
-                mount_path
-            );
+        _ => {
+            println!("Unexpected response from daemon.");
         }
     }
 
-    println!("Successfully purged backup set '{}'.", set_name);
     Ok(())
 }
 

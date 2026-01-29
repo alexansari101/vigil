@@ -63,4 +63,6 @@ pub struct SnapshotInfo {
     pub paths: Vec<PathBuf>,
     /// List of tags associated with the snapshot.
     pub tags: Vec<String>,
+    /// Total size of the snapshot in bytes, if available.
+    pub total_bytes: Option<u64>,
 }

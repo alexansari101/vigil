@@ -188,9 +188,11 @@ Enhance `backutil status` to include storage health. This information is critica
 
 ---
 
-### 35. [ ] CLI `snapshots` command
+### 35. [x] CLI `snapshots` command
 
 Add `backutil snapshots <SET>` command to list available snapshots without mounting. Per spec.md Section 13.
+
+**Branch:** `feature/cli-snapshots`
 
 **Acceptance criteria:**
 
