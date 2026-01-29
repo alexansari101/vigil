@@ -238,4 +238,4 @@ Enhance `backutil status` to include storage health. This information is critica
 | 35 | CLI snapshots command | `df97124` | 2026-01-28 |
 | 36 | CLI `check` command | `1f921a0` | 2026-01-29 |
 | 38 | Plain English help text | `c65fccd` | 2026-01-29 |
-| 39 | Global `--quiet` and `--json` flags | `df7148a` | 2026-01-29 |
+| 39 | Global `--quiet` and `--json` flags | `abcc197` | 2026-01-29 |
