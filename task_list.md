@@ -3,12 +3,13 @@
 ## Instructions for Agents
 
 1. **Read first:** `prd.md`, `spec.md`, `developer_guidelines.md`, `changelog.md`
-2. **Claim a task:** Take the topmost `[ ]` task that is not blocked
+2. **Claim a task:** Take the topmost `[ ]` task that is not blocked and claim it by marking it `[x]`.
 3. **Create a feature branch:** `git checkout -b feature/<task-short-name>`
 4. **Implement, test, verify** per `developer_guidelines.md` Section 0
 5. **Update changelog.md:** Add entry describing your changes
-6. **Update this file:** Mark task `[x]` and note your branch name. Move to the end of the list matching the format of other completed tasks.
+6. **Update this file:** Remove the task from the list and add it to the completed tasks at the bottom of the list. Match the format of other completed tasks.
 7. **Merge to main:** Only after all tests pass and regression testing is complete and the pre-commit checklist has been completed per `developer_guidelines.md` Section 8.
+8. **Amend the commit** Update the "completed tasks" section of this file with the short commit id of the final merge commit.
 
 **Parallel work:** Multiple agents may work simultaneously on unblocked tasks. Communicate via changelog.md and commit messages. If you encounter a merge conflict, resolve it carefully and re-run all tests.
 

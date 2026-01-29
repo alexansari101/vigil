@@ -73,7 +73,7 @@ impl JobManager {
                     if let Some(latest) = snapshots.first() {
                         debug!("Found latest snapshot for '{}': {}", name, latest.id);
                         job.last_backup = Some(BackupResult {
-                            snapshot_id: latest.id.clone(),
+                            snapshot_id: latest.short_id.clone(),
                             timestamp: latest.timestamp,
                             added_bytes: 0,     // Not available from snapshots command
                             duration_secs: 0.0, // Not available from snapshots command

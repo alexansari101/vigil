@@ -4,7 +4,6 @@ use backutil_lib::paths;
 use backutil_lib::types::{JobState, SetStatus};
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 
@@ -813,50 +812,109 @@ async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
 
     if let Ok(config) = config_res {
         if let Some(set) = config.backup_sets.iter().find(|s| s.name == set_name) {
-            target_path = Some(PathBuf::from(&set.target));
+            if !force {
+                anyhow::bail!("Backup set '{}' is still present in config.toml. Remove it first or use --force.", set_name);
+            }
+            target_path = Some(set.target.clone());
         }
     }
 
-    if let Some(path) = target_path {
-        println!("Purging backup set '{}'...", set_name);
-        println!(
-            "This will delete ALL data in {:?} and can NOT be undone!",
-            path
-        );
-        if !force {
-            print!("Are you absolutely sure? [y/N]: ");
-            use std::io::Write;
-            std::io::stdout().flush()?;
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input)?;
-            if input.trim().to_lowercase() != "y" {
-                println!("Purge cancelled.");
-                return Ok(());
+    // Try to get target path from daemon if not found in config
+    if target_path.is_none() {
+        if let Ok(mut stream) = UnixStream::connect(paths::socket_path()).await {
+            let _ = send_request(&mut stream, Request::Status).await;
+            let mut reader = BufReader::new(&mut stream);
+            if let Ok(Response::Ok(Some(ResponseData::Status { sets }))) =
+                receive_response(&mut reader).await
+            {
+                if let Some(set) = sets.iter().find(|s| s.name == set_name) {
+                    target_path = Some(set.target.to_string_lossy().to_string());
+                }
             }
         }
+    }
 
-        if path.exists() {
-            std::fs::remove_dir_all(&path)?;
-            println!("Deleted repository at {:?}", path);
-        } else {
-            println!(
-                "Repository at {:?} does not exist, skipping file deletion.",
-                path
-            );
-        }
-        println!("Successfully purged set '{}'.", set_name);
-        println!("Note: You may want to manually remove it from your config file.");
-    } else {
-        println!(
-            "Set '{}' not found in config. Cannot determine repository path.",
+    let target_path = target_path.ok_or_else(|| {
+        anyhow!(
+            "Could not determine target path for backup set '{}'. Is it in config.toml?",
             set_name
+        )
+    })?;
+
+    if !force {
+        println!(
+            "WARNING: This will permanently delete ALL backup data for '{}' at '{}' and can NOT be undone!",
+            set_name, target_path
         );
-        if !force {
-            println!("Use --force to skip config check if you know the daemon will handle it (not yet implemented for orphaned sets).");
-            return Err(anyhow!("Set not found in config"));
+        println!("Source files will NOT be affected.");
+        print!("Are you sure you want to proceed? [y/N]: ");
+        use std::io::Write;
+        std::io::stdout().flush()?;
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        if input.trim().to_lowercase() != "y" {
+            println!("Purge cancelled.");
+            return Ok(());
         }
     }
 
+    // 1. Unmount if mounted
+    println!("Unmounting set '{}' if active...", set_name);
+    if let Ok(mut stream) = UnixStream::connect(paths::socket_path()).await {
+        let mut reader = BufReader::new(&mut stream);
+        let _ = send_request(
+            reader.get_mut(),
+            Request::Unmount {
+                set_name: Some(set_name.clone()),
+            },
+        )
+        .await;
+        let _ = receive_response(&mut reader).await; // Ignore response details
+
+        // 2. Reload daemon config to stop tracking it (in case it's still there)
+        println!("Refreshing daemon configuration...");
+        let _ = send_request(reader.get_mut(), Request::ReloadConfig).await;
+        let _ = receive_response(&mut reader).await;
+    }
+
+    // 3. Delete repository
+    println!("Deleting Restic repository at '{}'...", target_path);
+    let path = std::path::Path::new(&target_path);
+    if path.exists() {
+        if path.is_dir() {
+            std::fs::remove_dir_all(path).context("Failed to remove repository directory")?;
+        } else {
+            anyhow::bail!(
+                "Target path '{}' exists but is not a directory. Refusing to delete.",
+                target_path
+            );
+        }
+    } else {
+        println!("Repository directory does not exist, skipping.");
+    }
+
+    // 4. Delete mount point
+    let mount_path = paths::mount_path(&set_name);
+    if mount_path.exists() {
+        println!("Deleting mount point at {:?}...", mount_path);
+        // We try a few times because unmount might take a moment to propagate in the kernel
+        let mut success = false;
+        for _ in 0..5 {
+            if std::fs::remove_dir_all(&mount_path).is_ok() {
+                success = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+        if !success {
+            println!(
+                "Warning: Could not remove mount point directory {:?}. It might still be busy.",
+                mount_path
+            );
+        }
+    }
+
+    println!("Successfully purged backup set '{}'.", set_name);
     Ok(())
 }
 
