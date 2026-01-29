@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -15,7 +15,7 @@ pub enum ConfigError {
     MissingField(String),
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
     pub global: GlobalConfig,
     #[serde(rename = "backup_set", default)]
@@ -23,7 +23,7 @@ pub struct Config {
 }
 
 /// Global configuration settings.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GlobalConfig {
     /// Wait time in seconds after the last detected change before triggering a backup.
     #[serde(default = "default_debounce")]
@@ -49,7 +49,7 @@ impl Default for GlobalConfig {
 }
 
 /// Configuration for a specific backup set.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct BackupSet {
     /// Unique identifier for the backup set.
     pub name: String,
@@ -68,7 +68,7 @@ pub struct BackupSet {
 }
 
 /// Retention policy defining how many snapshots to keep.
-#[derive(Debug, Deserialize, Clone, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct RetentionPolicy {
     /// Number of most recent snapshots to keep.
     pub keep_last: Option<u32>,
@@ -260,5 +260,30 @@ target = "/tmp/backup2"
             .unwrap_err()
             .to_string()
             .contains("Duplicate backup set name"));
+    }
+
+    #[test]
+    fn test_config_serialization() {
+        let set = BackupSet {
+            name: "test".to_string(),
+            source: Some("~/test".to_string()),
+            sources: None,
+            target: "~/backup".to_string(),
+            exclude: Some(vec!["*.tmp".to_string()]),
+            debounce_seconds: Some(30),
+            retention: Some(RetentionPolicy {
+                keep_last: Some(5),
+                ..Default::default()
+            }),
+        };
+
+        let config = Config {
+            global: GlobalConfig::default(),
+            backup_sets: vec![set],
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"name\":\"test\""));
+        assert!(json.contains("\"target\":\"~/backup\""));
     }
 }

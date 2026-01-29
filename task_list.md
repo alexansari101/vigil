@@ -188,19 +188,6 @@ Enhance `backutil status` to include storage health. This information is critica
 
 ---
 
-### 34. [ ] CLI `list` command
-
-Add `backutil list` command to show all configured backup sets without requiring the daemon. Per spec.md Section 13.
-
-**Acceptance criteria:**
-
-- Works without daemon running (reads config directly)
-- Displays set name, source path(s), target path in tabular format
-- Supports `--json` flag for machine-readable output
-- Uses exit code 2 if config is invalid
-
----
-
 ### 35. [ ] CLI `snapshots` command
 
 Add `backutil snapshots <SET>` command to list available snapshots without mounting. Per spec.md Section 13.
@@ -295,3 +282,4 @@ Add global output format flags to all CLI commands. Per spec.md Section 13.
 | 33 | Graceful backup set removal / purge command | `16bd0ef` | 2026-01-28 |
 | 31 | Daemon status persistence on startup | `3ea6303` | 2026-01-28 |
 | 40 | Fix backup all sets timeout/hanging issue | `61c1b94` | 2026-01-28 |
+| 34 | CLI list command | `0fbb963` | 2026-01-28 |

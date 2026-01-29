@@ -69,6 +69,12 @@ enum Commands {
         #[arg(short, long)]
         follow: bool,
     },
+    /// List all configured backup sets
+    List {
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
     /// Gracefully remove a backup set and delete its repository
     Purge {
         /// Name of the backup set to purge
@@ -120,6 +126,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Purge { set, force } => {
             handle_purge(set, force).await?;
+        }
+        Commands::List { json } => {
+            handle_list(json).await?;
         }
         _ => {
             println!("Command not yet implemented.");
@@ -892,6 +901,51 @@ async fn handle_purge(set_name: String, force: bool) -> anyhow::Result<()> {
     }
 
     println!("Successfully purged backup set '{}'.", set_name);
+    Ok(())
+}
+
+async fn handle_list(json: bool) -> anyhow::Result<()> {
+    let config = match backutil_lib::config::load_config() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Error loading configuration: {}", e);
+            std::process::exit(2);
+        }
+    };
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&config)?);
+    } else {
+        if config.backup_sets.is_empty() {
+            println!("No backup sets configured.");
+            return Ok(());
+        }
+
+        println!("{:<15} {:<30} {:<30}", "NAME", "SOURCE", "TARGET");
+        println!("{}", "-".repeat(75));
+
+        for set in &config.backup_sets {
+            let source_str = if let Some(ref s) = set.source {
+                s.clone()
+            } else if let Some(ref ss) = set.sources {
+                if ss.is_empty() {
+                    "None".to_string()
+                } else {
+                    let first = &ss[0];
+                    if ss.len() > 1 {
+                        format!("{} (+{} more)", first, ss.len() - 1)
+                    } else {
+                        first.clone()
+                    }
+                }
+            } else {
+                "None".to_string()
+            };
+
+            println!("{:<15} {:<30} {:<30}", set.name, source_str, set.target);
+        }
+    }
+
     Ok(())
 }
 

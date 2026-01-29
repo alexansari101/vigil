@@ -8,6 +8,35 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-28] — feature: cli list command
+
+**What changed:**
+
+- Implemented `backutil list` command to display all configured backup sets.
+- Added support for `--json` flag to output machine-readable configuration.
+- Enhanced `Config` and related structs in `backutil-lib` with `Serialize` derive.
+- Improved tabular output to handle multiple sources (e.g., `~/docs (+1 more)`).
+- Added unit test for config serialization and a new integration test `cli_list_test.rs`.
+
+**Why:**
+
+- Implements Task #34. Provides users with a quick way to view their backup configuration without requiring the daemon to be running.
+
+**Files affected:**
+
+- crates/backutil-lib/src/config.rs (modified)
+- crates/backutil/src/main.rs (modified)
+- crates/backutil/tests/cli_list_test.rs (new)
+
+**Testing notes:**
+
+- Verified tabular output with single and multiple sources.
+- Verified `--json` output is valid and contains all configuration fields.
+- Verified that it correctly identifies missing or invalid configuration files (exit code 2).
+- All unit and integration tests passed.
+
+---
+
 ## [2026-01-28] — bugfix: fix backup hanging issue and add timeout/no-wait flags
 
 **What changed:**
