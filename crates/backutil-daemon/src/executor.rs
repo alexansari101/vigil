@@ -136,7 +136,7 @@ impl ResticExecutor {
                         .context("Failed to parse restic summary JSON")?;
 
                     return Ok(BackupResult {
-                        snapshot_id: summary.snapshot_id[..8].to_string(), // Truncate to short ID per Task #37
+                        snapshot_id: summary.snapshot_id.chars().take(8).collect(), // Truncate to short ID per Task #37
                         timestamp: Utc::now(),
                         added_bytes: summary.data_added,
                         duration_secs: summary.total_duration,
