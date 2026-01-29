@@ -160,20 +160,6 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ---
 
-### 31. [ ] Daemon status persistence on startup
-
-On daemon startup, query each backup set's restic repository for the most recent snapshot to populate `last_backup` in `SetStatus`. This ensures status displays correctly after daemon restart.
-
-**Acceptance criteria:**
-
-- On startup, daemon queries `restic snapshots --latest 1 --json` for each backup set
-- `last_backup` is populated with timestamp and snapshot_id from the most recent snapshot
-- If repository is empty or uninitialized, `last_backup` remains null
-- Status command shows correct "X ago" time even after daemon restart
-- `[BLOCKED BY: #14]`
-
----
-
 ### 32. [ ] Enhanced status output with storage metrics
 
 The `backutil status` command should give users a quick overview of their backup health including storage consumption. Currently it only shows name, state, last backup time, and mount status.
@@ -221,3 +207,4 @@ The `backutil status` command should give users a quick overview of their backup
 | 20 | CLI bootstrap command | `060050c` | 2026-01-26 |
 | 21 | CLI disable/uninstall commands | `060050c` | 2026-01-26 |
 | 33 | Graceful backup set removal / purge command | `16bd0ef` | 2026-01-28 |
+| 31 | Daemon status persistence on startup | `3ea6303` | 2026-01-28 |
