@@ -188,18 +188,7 @@ Enhance `backutil status` to include storage health. This information is critica
 
 ---
 
-### 35. [x] CLI `snapshots` command
-
-Add `backutil snapshots <SET>` command to list available snapshots without mounting. Per spec.md Section 13.
-
-**Branch:** `feature/cli-snapshots`
-
-**Acceptance criteria:**
-
-- Displays snapshot short_id, timestamp, and paths
-- `--limit N` flag to limit output (default: 10)
-- Supports `--json` flag for machine-readable output
-- IPC already has `Snapshots` request type — use it
+---
 
 ---
 
@@ -276,3 +265,4 @@ Add global output format flags to all CLI commands. Per spec.md Section 13.
 | 40 | Fix backup all sets timeout/hanging issue | `61c1b94` | 2026-01-28 |
 | 34 | CLI list command | `4ee25b1` | 2026-01-28 |
 | 37 | Use short_id in CLI output | `review` | 2026-01-28 |
+| 35 | CLI snapshots command | `df97124` | 2026-01-28 |
