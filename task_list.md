@@ -193,18 +193,6 @@ Enhance `backutil status` to include storage health. This information is critica
 
 ---
 
-### 36. [ ] CLI `check` command
-
-Add `backutil check [SET]` command to validate configuration and test repository access. Per spec.md Section 13.
-
-**Acceptance criteria:**
-
-- `--config-only` flag validates config without testing repos
-- Without flag: validates config + tests each repo with `restic snapshots`
-- Works without daemon for config validation
-- Clear success/failure indicators (✓/✗)
-- Exit code 2 for config errors, 4 for restic errors
-
 ---
 
 ---
@@ -267,3 +255,4 @@ Add global output format flags to all CLI commands. Per spec.md Section 13.
 | 34 | CLI list command | `4ee25b1` | 2026-01-28 |
 | 37 | Use short_id in CLI output | `review` | 2026-01-28 |
 | 35 | CLI snapshots command | `df97124` | 2026-01-28 |
+| 36 | CLI `check` command | `1f921a0` | 2026-01-29 |

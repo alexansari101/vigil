@@ -8,6 +8,33 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-29] — feature: cli check command
+
+**What changed:**
+
+- Implemented `backutil check [SET]` command to validate configuration and test repository access.
+- Added `--config-only` flag to skip repository validation.
+- Checks exit with code 2 for configuration errors and code 4 for repository errors (restic failures).
+- Added integration tests to verify successful and failed validation scenarios.
+
+**Why:**
+
+- Implements Task #36. Allows users (and automated tools) to verify that `backutil` is correctly configured and that backup repositories are accessible without running a full backup or starting the daemon.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+- crates/backutil/tests/cli_check_test.rs (new)
+
+**Testing notes:**
+
+- Verified that `backutil check` correctly identifies valid and invalid configurations.
+- Verified that missing password file triggers exit code 2.
+- Verified that inaccessible repositories trigger exit code 4.
+- Verified that `--config-only` skips repository checks.
+
+---
+
 ## [2026-01-29] — feature: cli snapshots command
 
 **What changed:**

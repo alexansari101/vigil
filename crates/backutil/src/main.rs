@@ -94,6 +94,14 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Validate configuration and repository access
+    Check {
+        /// Name of the backup set to check (null = all sets)
+        set: Option<String>,
+        /// Only validate configuration, do not check repositories
+        #[arg(long)]
+        config_only: bool,
+    },
 }
 
 #[tokio::main]
@@ -143,6 +151,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Snapshots { set, limit, json } => {
             handle_snapshots(set, limit, json).await?;
+        }
+        Commands::Check { set, config_only } => {
+            handle_check(set, config_only).await?;
         }
         Commands::Tui => {
             println!("Command not yet implemented.");
@@ -801,6 +812,105 @@ async fn handle_prune(set_name: Option<String>) -> anyhow::Result<()> {
         _ => {
             println!("Unexpected response from daemon.");
         }
+    }
+
+    Ok(())
+}
+
+async fn handle_check(set_name: Option<String>, config_only: bool) -> anyhow::Result<()> {
+    // 1. Config Validation
+    let config = match backutil_lib::config::load_config() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("✗ Configuration invalid: {}", e);
+            std::process::exit(2);
+        }
+    };
+
+    println!(
+        "✓ Configuration valid: {} backup sets defined",
+        config.backup_sets.len()
+    );
+
+    if config_only {
+        // Also check if password file exists, as per spec this is part of basic config/setup check
+        let password_path = paths::password_path();
+        if password_path.exists() {
+            println!("✓ Password file exists");
+        } else {
+            println!("✗ Password file missing at {:?}", password_path);
+            std::process::exit(2);
+        }
+        return Ok(());
+    }
+
+    // 2. Repo Validation
+    let password_path = paths::password_path();
+    if !password_path.exists() {
+        eprintln!("✗ Password file missing at {:?}", password_path);
+        eprintln!("  Run `backutil init` to create it.");
+        std::process::exit(2);
+    } else {
+        println!("✓ Password file exists");
+    }
+
+    let sets_to_check: Vec<_> = if let Some(name) = set_name {
+        let set = config
+            .backup_sets
+            .iter()
+            .find(|s| s.name == name)
+            .ok_or_else(|| anyhow!("Backup set '{}' not found in config", name))?;
+        vec![set]
+    } else {
+        config.backup_sets.iter().collect()
+    };
+
+    if sets_to_check.is_empty() {
+        println!("No backup sets found to check.");
+        return Ok(());
+    }
+
+    let mut failed = false;
+
+    for set in sets_to_check {
+        print!("Checking '{}'... ", set.name);
+        use std::io::Write;
+        std::io::stdout().flush()?;
+
+        // Use `restic snapshots --latest 1` as a quick check for repo accessibility
+        let output = tokio::process::Command::new("restic")
+            .arg("snapshots")
+            .arg("--repo")
+            .arg(&set.target)
+            .arg("--password-file")
+            .arg(&password_path)
+            .arg("--latest")
+            .arg("1")
+            .arg("--json")
+            .output()
+            .await;
+
+        match output {
+            Ok(output) => {
+                if output.status.success() {
+                    println!("\r✓ {}: Repository accessible", set.name);
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    println!("\r✗ {}: Repository check failed", set.name);
+                    eprintln!("  Error: {}", stderr.trim());
+                    failed = true;
+                }
+            }
+            Err(e) => {
+                println!("\r✗ {}: Failed to execute restic", set.name);
+                eprintln!("  Error: {}", e);
+                failed = true;
+            }
+        }
+    }
+
+    if failed {
+        std::process::exit(4);
     }
 
     Ok(())
