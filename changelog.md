@@ -8,6 +8,23 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-29] — feature: plain english help text
+
+**What changed:**
+
+- Updated all CLI help text to use user-friendly, jargon-free plain English.
+- Replaced technical terms like `(null = all sets)` with natural language explanations (e.g., "If omitted, initializes all sets").
+
+**Why:**
+
+- Implements Task #38. Improves CLI usability and helps new users understand command arguments and options more easily.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+
+---
+
 ## [2026-01-29] — feature: cli check command
 
 **What changed:**

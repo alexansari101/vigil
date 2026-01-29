@@ -17,6 +17,8 @@
 
 ---
 
+---
+
 ## Phase 1: Foundation
 
 *All Phase 1 tasks completed.*
@@ -197,16 +199,6 @@ Enhance `backutil status` to include storage health. This information is critica
 
 ---
 
-### 38. [ ] Plain English help text
-
-Update clap argument help text to use plain English. Per spec.md Section 13.
-
-**Acceptance criteria:**
-
-- Replace `(null = all sets)` with natural language: "If omitted, backs up all sets"
-- All help text uses friendly, jargon-free language
-- Consistent formatting across all commands
-
 ---
 
 ### 39. [ ] Global `--quiet` and `--json` flags
@@ -256,3 +248,4 @@ Add global output format flags to all CLI commands. Per spec.md Section 13.
 | 37 | Use short_id in CLI output | `review` | 2026-01-28 |
 | 35 | CLI snapshots command | `df97124` | 2026-01-28 |
 | 36 | CLI `check` command | `1f921a0` | 2026-01-29 |
+| 38 | Plain English help text | `c65fccd` | 2026-01-29 |

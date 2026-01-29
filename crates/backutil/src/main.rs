@@ -18,48 +18,48 @@ struct Cli {
 enum Commands {
     /// Initialize a new Restic repository
     Init {
-        /// Name of the backup set to initialize (null = all sets)
+        /// Name of the backup set to initialize. If omitted, initializes all sets.
         set: Option<String>,
     },
-    /// Run backup now
+    /// Start a backup now
     Backup {
-        /// Name of the backup set to backup (null = all sets)
+        /// Name of the backup set to back up. If omitted, backs up all sets.
         set: Option<String>,
-        /// Do not wait for backup completion
+        /// Do not wait for the backup to complete
         #[arg(long, conflicts_with = "timeout")]
         no_wait: bool,
-        /// Maximum time to wait for completion (seconds)
+        /// Maximum time to wait for completion (in seconds)
         #[arg(long)]
         timeout: Option<u64>,
     },
     /// Show health summary and recent snapshots
     Status,
-    /// Mount a snapshot via FUSE
+    /// Mount a backup as a folder
     Mount {
         /// Name of the backup set to mount
         set: String,
-        /// Snapshot ID to mount (null = latest)
+        /// Specific snapshot ID to mount. If omitted, mounts the latest one.
         snapshot_id: Option<String>,
     },
-    /// Unmount FUSE mounts
+    /// Unmount previously mounted folders
     Unmount {
-        /// Name of the backup set to unmount (null = all)
+        /// Name of the backup set to unmount. If omitted, unmounts all.
         set: Option<String>,
     },
-    /// Trigger retention policy cleanup
+    /// Clean up old backups according to retention policy
     Prune {
-        /// Name of the backup set to prune (null = all)
+        /// Name of the backup set to prune. If omitted, prunes all.
         set: Option<String>,
     },
     /// Launch interactive dashboard
     Tui,
-    /// Generate and enable systemd user units
+    /// Generate and enable the background service
     Bootstrap,
-    /// Stop and disable systemd units
+    /// Stop and disable the background service
     Disable,
-    /// Remove systemd units
+    /// Remove the background service
     Uninstall {
-        /// Also remove config, logs, and password file
+        /// Also remove configuration, logs, and password files
         #[arg(long)]
         purge: bool,
     },
@@ -69,36 +69,36 @@ enum Commands {
         #[arg(short, long)]
         follow: bool,
     },
-    /// List all configured backup sets
+    /// List all defined backup sets
     List {
-        /// Output in JSON format
+        /// Show results in JSON format
         #[arg(long)]
         json: bool,
     },
-    /// Gracefully remove a backup set and delete its repository
+    /// Permanently delete a backup set and its repository
     Purge {
-        /// Name of the backup set to purge
+        /// Name of the backup set to delete
         set: String,
-        /// Skip confirmation and force purge even if set is in config
+        /// Skip confirmation and force deletion even if set is in configuration
         #[arg(long)]
         force: bool,
     },
-    /// List available snapshots for a backup set
+    /// Show all available backups for a set
     Snapshots {
         /// Name of the backup set
         set: String,
-        /// Limit the number of snapshots displayed
+        /// Limit the number of backups shown
         #[arg(long, default_value = "10")]
         limit: usize,
-        /// Output in JSON format
+        /// Show results in JSON format
         #[arg(long)]
         json: bool,
     },
-    /// Validate configuration and repository access
+    /// Check if configuration and repositories are healthy
     Check {
-        /// Name of the backup set to check (null = all sets)
+        /// Name of the backup set to check. If omitted, checks all.
         set: Option<String>,
-        /// Only validate configuration, do not check repositories
+        /// Only check configuration, do not try to reach repositories
         #[arg(long)]
         config_only: bool,
     },
