@@ -311,3 +311,67 @@ All errors displayed to users must include:
 | 3 | Daemon not running |
 | 4 | Restic error |
 | 5 | Mount/unmount error |
+
+## 13. CLI Output Requirements
+
+### Global Flags
+
+All CLI commands should support these global flags:
+
+| Flag | Description |
+|------|-------------|
+| `--quiet`, `-q` | Suppress non-essential output; only show errors |
+| `--json` | Output machine-readable JSON instead of human-readable text |
+
+### Output Standards
+
+**Short IDs:** When displaying snapshot IDs, use the 8-character `short_id` format rather than full 64-character hashes.
+
+**Human-Readable Sizes:** Use `format_size()` to display bytes as human-readable (e.g., "1.2 MiB" instead of "1258291").
+
+**Plain English Help:** Help text should use plain English:
+
+- Good: `[SET]  Backup set name. If omitted, backs up all sets.`
+- Bad: `[SET]  Name of the backup set (null = all sets)`
+
+**Clean CLI Output:** Daemon log messages (e.g., `INFO backutil_daemon::manager: ...`) must not appear in CLI command output. CLI should only display user-facing messages.
+
+### New CLI Commands
+
+**`backutil list`**
+
+Lists all configured backup sets. Does not require daemon to be running.
+
+```
+$ backutil list
+NAME            SOURCE                          TARGET
+personal        ~/personal_records              /mnt/backup/personal
+financial       ~/financial_docs                /mnt/backup/financial
+```
+
+**`backutil snapshots <SET> [--limit N]`**
+
+Lists available snapshots for a backup set. Requires daemon.
+
+```
+$ backutil snapshots personal --limit 5
+ID        DATE                 SIZE      PATHS
+5a08c7d4  2026-01-28 19:43     3.3 KiB   /tmp/backutil_test/source1
+e6ad2ad9  2026-01-28 19:40     1.9 KiB   /tmp/backutil_test/source1
+```
+
+**`backutil check [SET]`**
+
+Validates configuration and optionally tests repository access. Does not require daemon for config validation.
+
+```
+$ backutil check
+✓ Configuration valid: 2 backup sets defined
+✓ Password file exists and is readable
+✓ personal: Repository accessible
+✓ financial: Repository accessible
+
+$ backutil check --config-only
+✓ Configuration valid: 2 backup sets defined
+✓ Password file exists and is readable
+```

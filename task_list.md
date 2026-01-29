@@ -107,14 +107,17 @@ Review all error paths. Ensure user-facing errors include what/why/how-to-fix pe
 
 ---
 
-### 27. [ ] Logging and observability
+### 27. [ ] Robust Logging and clean output
 
-Ensure daemon logs all significant events. Implement log rotation or size limits.
+Ensure daemon logs all significant events to a file with rotation. Ensure CLI output remains clean by preventing daemon logs from polluting the interactive terminal.
 
 **Acceptance criteria:**
 
 - All significant events logged (backup start/complete, state changes)
+- Logs written to `~/.local/share/backutil/backutil.log`
 - Logs rotated or size-limited to prevent unbounded growth
+- Daemon log lines (e.g., `INFO ...`) do not appear on stdout/stderr when running as a service or via CLI triggers
+- CLI output during `backup`, `status`, etc., contains only user-facing messages
 - Graceful shutdown cancels in-flight worker tasks (debounce/backup)
 - `[BLOCKED BY: #1-#25]`
 
@@ -160,9 +163,13 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ---
 
+## Phase 6: CLI UX Polish
+
+---
+
 ### 32. [ ] Enhanced status output with storage metrics
 
-The `backutil status` command should give users a quick overview of their backup health including storage consumption. Currently it only shows name, state, last backup time, and mount status.
+Enhance `backutil status` to include storage health. This information is critical for CLI users to verify their backup growth and version history at a glance.
 
 **Acceptance criteria:**
 
@@ -178,6 +185,96 @@ The `backutil status` command should give users a quick overview of their backup
 - Consider whether to query live on each status call vs cache in daemon state
 - If caching, when to refresh? (after backup, after prune, periodically?)
 - Current `SetStatus` struct in spec.md may need new fields
+
+---
+
+### 34. [ ] CLI `list` command
+
+Add `backutil list` command to show all configured backup sets without requiring the daemon. Per spec.md Section 13.
+
+**Acceptance criteria:**
+
+- Works without daemon running (reads config directly)
+- Displays set name, source path(s), target path in tabular format
+- Supports `--json` flag for machine-readable output
+- Uses exit code 2 if config is invalid
+
+---
+
+### 35. [ ] CLI `snapshots` command
+
+Add `backutil snapshots <SET>` command to list available snapshots without mounting. Per spec.md Section 13.
+
+**Acceptance criteria:**
+
+- Displays snapshot short_id, timestamp, and paths
+- `--limit N` flag to limit output (default: 10)
+- Supports `--json` flag for machine-readable output
+- IPC already has `Snapshots` request type — use it
+
+---
+
+### 36. [ ] CLI `check` command
+
+Add `backutil check [SET]` command to validate configuration and test repository access. Per spec.md Section 13.
+
+**Acceptance criteria:**
+
+- `--config-only` flag validates config without testing repos
+- Without flag: validates config + tests each repo with `restic snapshots`
+- Works without daemon for config validation
+- Clear success/failure indicators (✓/✗)
+- Exit code 2 for config errors, 4 for restic errors
+
+---
+
+### 37. [ ] Use short_id in CLI output
+
+Update CLI to use 8-character short snapshot IDs instead of full 64-character hashes. Per prd.md FR5.2.
+
+**Acceptance criteria:**
+
+- `backup` command completion message uses short_id
+- All snapshot-related output uses short_id
+- Full ID still available with `--verbose` or in JSON output
+
+---
+
+### 38. [ ] Plain English help text
+
+Update clap argument help text to use plain English. Per spec.md Section 13.
+
+**Acceptance criteria:**
+
+- Replace `(null = all sets)` with natural language: "If omitted, backs up all sets"
+- All help text uses friendly, jargon-free language
+- Consistent formatting across all commands
+
+---
+
+### 39. [ ] Global `--quiet` and `--json` flags
+
+Add global output format flags to all CLI commands. Per spec.md Section 13.
+
+**Acceptance criteria:**
+
+- `--quiet` / `-q` suppresses non-essential output
+- `--json` outputs machine-readable JSON
+- Both flags work on: status, backup, prune, snapshots, list, check, mount, unmount
+- JSON schema is stable and documented
+
+---
+
+### 40. [ ] Fix backup all sets timeout/hanging issue
+
+`backutil backup` (without specifying a set) may hang indefinitely waiting for completion responses. Per prd.md FR5.2.
+
+**Acceptance criteria:**
+
+- `backutil backup` completes reliably for all configured sets
+- Implement timeout or progress indicator
+- Consider `--no-wait` flag for fire-and-forget mode
+- Integration test covering multi-set backup
 
 ---
 
