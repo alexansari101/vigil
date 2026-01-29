@@ -62,6 +62,36 @@ impl JobManager {
         self.event_tx.subscribe()
     }
 
+    /// Queries restic for the latest snapshot of each backup set and populates `last_backup`.
+    /// This should be called on daemon startup.
+    pub async fn initialize_status(&self) {
+        let mut jobs = self.jobs.lock().await;
+        for (name, job) in jobs.iter_mut() {
+            debug!("Initializing status for backup set '{}'", name);
+            match self.executor.snapshots(&job.set.target, Some(1)).await {
+                Ok(snapshots) => {
+                    if let Some(latest) = snapshots.first() {
+                        debug!("Found latest snapshot for '{}': {}", name, latest.id);
+                        job.last_backup = Some(BackupResult {
+                            snapshot_id: latest.id.clone(),
+                            timestamp: latest.timestamp,
+                            added_bytes: 0,     // Not available from snapshots command
+                            duration_secs: 0.0, // Not available from snapshots command
+                            success: true,
+                            error_message: None,
+                        });
+                    } else {
+                        debug!("No snapshots found for '{}'", name);
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to query snapshots for '{}': {}", name, e);
+                    // We don't fail initialization if one repository is unreachable
+                }
+            }
+        }
+    }
+
     pub async fn sync_config(&self, config: &Config) -> Result<()> {
         let mut jobs = self.jobs.lock().await;
         let new_set_names: std::collections::HashSet<String> =
@@ -789,6 +819,73 @@ mod tests {
         let state = get_test_state().await.unwrap();
         // It might be Running or already Idle if the backup was fast
         assert!(matches!(state, JobState::Running | JobState::Idle));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn test_initialize_status() -> Result<()> {
+        let _ = tracing_subscriber::fmt::try_init();
+
+        let tmp = tempdir()?;
+        let source_path = tmp.path().join("source");
+        let repo_path = tmp.path().join("repo");
+        fs::create_dir(&source_path)?;
+        fs::write(source_path.join("test.txt"), "test data")?;
+
+        let config_home = tmp.path().join("config");
+        let data_home = tmp.path().join("data");
+        fs::create_dir_all(&config_home)?;
+        fs::create_dir_all(&data_home)?;
+        std::env::set_var("XDG_CONFIG_HOME", &config_home);
+        std::env::set_var("XDG_DATA_HOME", &data_home);
+
+        let pw_file = paths::password_path();
+        fs::create_dir_all(pw_file.parent().unwrap())?;
+        fs::write(&pw_file, "testpassword")?;
+        fs::set_permissions(&pw_file, fs::Permissions::from_mode(0o600))?;
+
+        let executor = crate::executor::ResticExecutor::new();
+        executor.init(repo_path.to_str().unwrap()).await?;
+
+        let config = Config {
+            global: GlobalConfig::default(),
+            backup_sets: vec![BackupSet {
+                name: "test".to_string(),
+                source: Some(source_path.to_string_lossy().to_string()),
+                sources: None,
+                target: repo_path.to_string_lossy().to_string(),
+                exclude: None,
+                debounce_seconds: Some(1),
+                retention: None,
+            }],
+        };
+
+        // 1. Create a backup first
+        let manager = JobManager::new(&config);
+        manager.trigger_backup("test").await?;
+        tokio::time::sleep(Duration::from_millis(2000)).await;
+
+        let status = manager.get_status().await;
+        let original_snapshot_id = status[0].last_backup.as_ref().unwrap().snapshot_id.clone();
+        assert!(!original_snapshot_id.is_empty());
+
+        // 2. Create a new manager (simulating daemon restart)
+        let manager2 = JobManager::new(&config);
+        // Initially last_backup should be None
+        assert!(manager2.get_status().await[0].last_backup.is_none());
+
+        // 3. Initialize status
+        manager2.initialize_status().await;
+
+        // 4. Verify last_backup is now populated with the same snapshot ID
+        let status2 = manager2.get_status().await;
+        assert_eq!(
+            status2[0].last_backup.as_ref().unwrap().snapshot_id,
+            original_snapshot_id
+        );
+        assert!(status2[0].last_backup.as_ref().unwrap().success);
 
         Ok(())
     }

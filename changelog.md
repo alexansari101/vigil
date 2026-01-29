@@ -8,6 +8,31 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-28] — feature: daemon status persistence on startup
+
+**What changed:**
+
+- Implemented `initialize_status` in the daemon's `JobManager` to query restic repositories for the latest snapshots upon startup.
+- Added call to `initialize_status` during daemon initialization in `main.rs`.
+- Populated `last_backup` in `SetStatus` for each backup set with existing snapshot information if available.
+- Added unit test `test_initialize_status` to verify persistence after daemon restart.
+
+**Why:**
+
+- Implements Task #31. Ensures that the `backutil status` command displays the correct "last backup" information immediately after the daemon is started or restarted, rather than showing "Never" until the first backup occurs.
+
+**Files affected:**
+
+- crates/backutil-daemon/src/manager.rs (modified)
+- crates/backutil-daemon/src/main.rs (modified)
+
+**Testing notes:**
+
+- Verified with `test_initialize_status` that `last_backup` is correctly restored from an existing restic repository after a simulated daemon restart.
+- All integration tests pass.
+
+---
+
 ## [2026-01-28] — feature: graceful removal and purge command
 
 **What changed:**

@@ -76,6 +76,9 @@ impl Daemon {
     async fn run(&self) -> Result<()> {
         self.create_pid_file()?;
 
+        // Query existing snapshots to populate status
+        self.job_manager.initialize_status().await;
+
         // Ensure socket directory exists
         if let Some(parent) = self.socket_path.parent() {
             fs::create_dir_all(parent)?;
