@@ -3,16 +3,15 @@ use std::process::Command;
 use tempfile::NamedTempFile;
 
 fn get_binary_path() -> std::path::PathBuf {
-    let workspace_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
-    let cli_path = workspace_root.join("target/debug/backutil");
+    let mut path = std::env::current_exe().expect("failed to get current exe");
+    path.pop(); // deps
+    if path.file_name().map_or(false, |n| n == "deps") {
+        path.pop(); // debug/release
+    }
+    path.push("backutil");
 
-    if cli_path.exists() {
-        cli_path
+    if path.exists() {
+        path
     } else {
         std::path::PathBuf::from("backutil")
     }
