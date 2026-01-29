@@ -130,7 +130,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::List { json } => {
             handle_list(json).await?;
         }
-        _ => {
+        Commands::Tui => {
             println!("Command not yet implemented.");
         }
     }

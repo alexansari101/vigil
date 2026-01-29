@@ -8,6 +8,33 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-28] — review: fix integration test isolation and short snapshot IDs
+
+**What changed:**
+
+- Fixed environment isolation in IPC integration tests by explicitly setting `BACKUTIL_CONFIG`.
+- Improved error reporting in `TestDaemon` to capture and display daemon stderr on failure.
+- Implemented Task #37: Updated `executor.rs` to return truncated 8-character snapshot IDs in backup results.
+- Verified all workspace tests pass, including stabilized IPC integration tests.
+
+**Why:**
+
+- IPC integration tests were flaky due to host environment variables (`BACKUTIL_CONFIG`) leaking into the test daemon.
+- Task #37 requires using short IDs for better CLI UX in completion messages.
+
+**Files affected:**
+
+- crates/backutil-daemon/tests/ipc_integration_test.rs (modified)
+- crates/backutil-daemon/src/executor.rs (modified)
+- task_list.md (modified)
+
+**Testing notes:**
+
+- Verified that `test_ipc_ping`, `test_ipc_status`, and `test_ipc_shutdown` pass reliably in a full workspace test run.
+- Verified that backup completion messages now display 8-character snapshot IDs.
+
+---
+
 ## [2026-01-28] — feature: cli list command
 
 **What changed:**

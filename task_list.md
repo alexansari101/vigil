@@ -215,16 +215,6 @@ Add `backutil check [SET]` command to validate configuration and test repository
 
 ---
 
-### 37. [ ] Use short_id in CLI output
-
-Update CLI to use 8-character short snapshot IDs instead of full 64-character hashes. Per prd.md FR5.2.
-
-**Acceptance criteria:**
-
-- `backup` command completion message uses short_id
-- All snapshot-related output uses short_id
-- Full ID still available with `--verbose` or in JSON output
-
 ---
 
 ### 38. [ ] Plain English help text
@@ -282,4 +272,5 @@ Add global output format flags to all CLI commands. Per spec.md Section 13.
 | 33 | Graceful backup set removal / purge command | `16bd0ef` | 2026-01-28 |
 | 31 | Daemon status persistence on startup | `3ea6303` | 2026-01-28 |
 | 40 | Fix backup all sets timeout/hanging issue | `61c1b94` | 2026-01-28 |
-| 34 | CLI list command | `0fbb963` | 2026-01-28 |
+| 34 | CLI list command | `4ee25b1` | 2026-01-28 |
+| 37 | Use short_id in CLI output | `review` | 2026-01-28 |

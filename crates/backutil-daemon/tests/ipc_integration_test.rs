@@ -56,6 +56,7 @@ target = "{}"
             .env("XDG_CONFIG_HOME", &config_dir)
             .env("XDG_DATA_HOME", &data_dir)
             .env("XDG_RUNTIME_DIR", &runtime_dir)
+            .env("BACKUTIL_CONFIG", &config_path) // Fixed: explicitly set config path to prevent leaking host ENV
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
@@ -73,7 +74,15 @@ target = "{}"
         if !socket_path.exists() {
             // Check if process is still running
             if let Ok(Some(status)) = child.try_wait() {
-                panic!("Daemon exited prematurely with status: {}", status);
+                let mut stderr = String::new();
+                if let Some(mut reader) = child.stderr.take() {
+                    use std::io::Read;
+                    let _ = reader.read_to_string(&mut stderr);
+                }
+                panic!(
+                    "Daemon exited prematurely with status: {}\nStderr: {}",
+                    status, stderr
+                );
             }
             panic!("Daemon failed to start or create socket within timeout");
         }
