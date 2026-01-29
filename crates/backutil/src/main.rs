@@ -26,7 +26,7 @@ enum Commands {
         /// Name of the backup set to backup (null = all sets)
         set: Option<String>,
         /// Do not wait for backup completion
-        #[arg(long)]
+        #[arg(long, conflicts_with = "timeout")]
         no_wait: bool,
         /// Maximum time to wait for completion (seconds)
         #[arg(long)]
@@ -214,15 +214,14 @@ async fn handle_backup(
     timeout: Option<u64>,
 ) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
+    let mut reader = BufReader::new(&mut stream);
     send_request(
-        &mut stream,
+        reader.get_mut(),
         Request::Backup {
             set_name: set_name.clone(),
         },
     )
     .await?;
-
-    let mut reader = BufReader::new(&mut stream);
     let mut expected_sets = std::collections::HashSet::new();
     let mut completed_count = 0;
     let mut had_failures = false;
@@ -253,9 +252,7 @@ async fn handle_backup(
                     set_name: started_set,
                 } => {
                     println!("Backup started for set '{}'.", started_set);
-                    if set_name.is_some() {
-                        expected_sets.insert(started_set);
-                    }
+                    expected_sets.insert(started_set);
                     initial_response_received = true;
                 }
                 ResponseData::BackupsTriggered { started, failed } => {
@@ -377,8 +374,9 @@ async fn handle_status() -> anyhow::Result<()> {
 
 async fn handle_mount(set_name: String, snapshot_id: Option<String>) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
+    let mut reader = BufReader::new(&mut stream);
     send_request(
-        &mut stream,
+        reader.get_mut(),
         Request::Mount {
             set_name,
             snapshot_id,
@@ -386,7 +384,6 @@ async fn handle_mount(set_name: String, snapshot_id: Option<String>) -> anyhow::
     )
     .await?;
 
-    let mut reader = BufReader::new(&mut stream);
     let response = receive_response(&mut reader).await?;
     match response {
         Response::Ok(Some(ResponseData::MountPath { path })) => {
@@ -414,15 +411,15 @@ async fn handle_mount(set_name: String, snapshot_id: Option<String>) -> anyhow::
 
 async fn handle_unmount(set_name: Option<String>) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
+    let mut reader = BufReader::new(&mut stream);
     send_request(
-        &mut stream,
+        reader.get_mut(),
         Request::Unmount {
             set_name: set_name.clone(),
         },
     )
     .await?;
 
-    let mut reader = BufReader::new(&mut stream);
     let response = receive_response(&mut reader).await?;
     match response {
         Response::Ok(_) => {
@@ -718,15 +715,15 @@ async fn handle_uninstall(purge: bool) -> anyhow::Result<()> {
 
 async fn handle_prune(set_name: Option<String>) -> anyhow::Result<()> {
     let mut stream = connect_to_daemon().await?;
+    let mut reader = BufReader::new(&mut stream);
     send_request(
-        &mut stream,
+        reader.get_mut(),
         Request::Prune {
             set_name: set_name.clone(),
         },
     )
     .await?;
 
-    let mut reader = BufReader::new(&mut stream);
     let response = receive_response(&mut reader).await?;
     match response {
         Response::Ok(Some(data)) => match data {
