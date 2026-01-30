@@ -17,6 +17,7 @@ anyhow.workspace = true
 libc.workspace = true
 globset.workspace = true
 tracing-appender = "0.2"
+time.workspace = true
 tokio-util = { version = "0.7" }
 
 [dev-dependencies]

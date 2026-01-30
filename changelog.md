@@ -8,6 +8,29 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-29] — build: resolve rustc version incompatibility for `time` dependency
+
+ **What changed:**
+
+- Pinned `time` dependency to `>=0.3.36, <0.3.37` and `time-core` to `>=0.1.2, <0.1.3` in the workspace `Cargo.toml`.
+- Explicitly added `time` to `backutil-daemon` to ensure the version constraint is respected during `cargo install`.
+- Updated `Cargo.lock` to use compatible versions.
+
+ **Why:**
+
+- Resolves a compilation failure where the `time` crate version `0.3.46` required `rustc 1.88.0`, but the system only has `1.85.0` installed. Ensuring project builds on common stable Rust versions.
+
+ **Files affected:**
+
+- Cargo.toml (modified)
+- crates/backutil-daemon/Cargo.toml (modified)
+- Cargo.lock (modified)
+
+ **Testing notes:**
+
+- Verified that `cargo build` and `cargo test` pass with `rustc 1.85.0`.
+- Verified that `time` version is correctly locked in `Cargo.lock`.
+
 ## [2026-01-30] — test: fix flaky daemon manager tests caused by shared env vars
 
  **What changed:**
