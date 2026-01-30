@@ -857,6 +857,7 @@ mod tests {
     use super::*;
     use backutil_lib::config::GlobalConfig;
     use backutil_lib::paths;
+    use serial_test::serial;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use tempfile::tempdir;
@@ -869,6 +870,7 @@ mod tests {
     /// cargo test -p backutil-daemon --lib -- --ignored --test-threads=1
     /// ```
     #[tokio::test]
+    #[serial]
     #[ignore]
     async fn test_debounce_logic() -> Result<()> {
         let _ = tracing_subscriber::fmt::try_init();
@@ -952,6 +954,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     #[ignore]
     async fn test_manual_trigger() -> Result<()> {
         let _ = tracing_subscriber::fmt::try_init();
@@ -1031,6 +1034,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     #[ignore]
     async fn test_initialize_status() -> Result<()> {
         let _ = tracing_subscriber::fmt::try_init();

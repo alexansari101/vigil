@@ -8,6 +8,30 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-30] — test: fix flaky daemon manager tests caused by shared env vars
+
+ **What changed:**
+
+- Added `serial_test` crate to serialize tests that mutate environment variables.
+- Applied `#[serial]` attribute to `test_debounce_logic`, `test_manual_trigger`, and `test_initialize_status` in `backutil-daemon`.
+
+ **Why:**
+
+- Implements Task #42. Ensures that tests mutating process-global state (environment variables) run sequentially, preventing race conditions and unreliable test results.
+
+ **Files affected:**
+
+- Cargo.toml (modified)
+- crates/backutil-daemon/Cargo.toml (modified)
+- crates/backutil-daemon/src/manager.rs (modified)
+
+ **Testing notes:**
+
+- Verified that the affected tests pass consistently when run together.
+- Verified no regressions in full workspace test suite.
+
+---
+
 ## [2026-01-30] — test: fix deterministic failure in cli_mount_test.rs
 
  **What changed:**

@@ -21,3 +21,4 @@ tokio-util = { version = "0.7" }
 
 [dev-dependencies]
 tempfile.workspace = true
+serial_test.workspace = true
