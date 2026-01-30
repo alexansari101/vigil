@@ -175,6 +175,8 @@ Communication between CLI/TUI and daemon uses JSON over Unix socket. Each messag
 - `source_paths` — list of paths
 - `target` — path
 - `is_mounted` — boolean
+- `snapshot_count` — integer or null (number of restic snapshots)
+- `total_bytes` — integer or null (total repository size in bytes)
 
 **BackupResult**:
 

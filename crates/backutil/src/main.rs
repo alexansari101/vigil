@@ -1428,7 +1428,7 @@ fn display_status(sets: Vec<SetStatus>) {
 
         let size_str = set
             .total_bytes
-            .map(|b| format_size(b))
+            .map(format_size)
             .unwrap_or_else(|| "-".to_string());
 
         println!(

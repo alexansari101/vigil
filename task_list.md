@@ -220,4 +220,4 @@ Write user-facing README with installation, quick start, and configuration examp
 | 36 | CLI `check` command | `1f921a0` | 2026-01-29 |
 | 38 | Plain English help text | `c65fccd` | 2026-01-29 |
 | 39 | Global `--quiet` and `--json` flags | `abcc197` | 2026-01-29 |
-| 32 | Enhanced status output with storage metrics | `78e4520` | 2026-01-30 |
+| 32 | Enhanced status output with storage metrics | `231cd49` | 2026-01-30 |

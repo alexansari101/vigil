@@ -422,6 +422,14 @@ impl JobManager {
                 Err(e) => {
                     let err_msg = e.to_string();
                     error!("Backup job error for set {}: {}", set_name, err_msg);
+
+                    {
+                        let mut jobs_lock = jobs.lock().await;
+                        if let Some(job) = jobs_lock.get_mut(&set_name) {
+                            job.state = JobState::Error;
+                        }
+                    }
+
                     let _ = notify_rust::Notification::new()
                         .summary("Backup Failed")
                         .body(&format!(
@@ -572,33 +580,66 @@ impl JobManager {
     }
 
     pub async fn prune(&self, set_name: Option<String>) -> Result<backutil_lib::ipc::ResponseData> {
-        let jobs = self.jobs.lock().await;
         if let Some(name) = set_name {
-            if let Some(job) = jobs.get(&name) {
-                info!("Pruning set {}", name);
-                // Use per-set retention if available, otherwise fall back to global retention
-                let effective_set = self.with_effective_retention(&job.set).await;
-                let reclaimed = self.executor.prune(&effective_set).await?;
-                info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
-                Ok(backutil_lib::ipc::ResponseData::PruneResult {
-                    set_name: name,
-                    reclaimed_bytes: reclaimed,
-                })
-            } else {
-                anyhow::bail!("Unknown backup set: {}", name)
-            }
+            let effective_set = {
+                let jobs = self.jobs.lock().await;
+                if let Some(job) = jobs.get(&name) {
+                    self.with_effective_retention(&job.set).await
+                } else {
+                    anyhow::bail!("Unknown backup set: {}", name)
+                }
+            };
+
+            info!("Pruning set {}", name);
+            let reclaimed = self.executor.prune(&effective_set).await?;
+            info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
+
+            // Refresh metrics after prune
+            let target = effective_set.target.clone();
+            let jobs = self.jobs.clone();
+            let executor = self.executor.clone();
+            let refresh_name = name.clone();
+            tokio::spawn(async move {
+                let snapshots_count_res = executor.snapshots(&target, None).await;
+                let size_res = JobManager::calculate_dir_size(std::path::Path::new(&target)).await;
+
+                if let Some(job) = jobs.lock().await.get_mut(&refresh_name) {
+                    if let Ok(snapshots) = snapshots_count_res {
+                        job.snapshot_count = Some(snapshots.len());
+                    }
+                    if let Ok(size) = size_res {
+                        job.total_bytes = Some(size);
+                    }
+                }
+            });
+
+            Ok(backutil_lib::ipc::ResponseData::PruneResult {
+                set_name: name,
+                reclaimed_bytes: reclaimed,
+            })
         } else {
+            // Collect effective sets under the lock, then drop it
+            let sets_to_prune: Vec<(String, BackupSet)> = {
+                let jobs = self.jobs.lock().await;
+                let mut sets = Vec::new();
+                for (name, job) in jobs.iter() {
+                    let effective_set = self.with_effective_retention(&job.set).await;
+                    sets.push((name.clone(), effective_set));
+                }
+                sets
+            };
+
             info!("Pruning all sets");
             let mut succeeded = Vec::new();
             let mut failed = Vec::new();
+            let mut targets_to_refresh = Vec::new();
 
-            for (name, job) in jobs.iter() {
-                // Use per-set retention if available, otherwise fall back to global retention
-                let effective_set = self.with_effective_retention(&job.set).await;
-                match self.executor.prune(&effective_set).await {
+            for (name, effective_set) in &sets_to_prune {
+                match self.executor.prune(effective_set).await {
                     Ok(reclaimed) => {
                         info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
                         succeeded.push((name.clone(), reclaimed));
+                        targets_to_refresh.push((name.clone(), effective_set.target.clone()));
                     }
                     Err(e) => {
                         error!("Failed to prune set {}: {}", name, e);
@@ -606,6 +647,27 @@ impl JobManager {
                     }
                 }
             }
+
+            // Refresh metrics for successfully pruned sets
+            for (name, target) in targets_to_refresh {
+                let jobs = self.jobs.clone();
+                let executor = self.executor.clone();
+                tokio::spawn(async move {
+                    let snapshots_count_res = executor.snapshots(&target, None).await;
+                    let size_res =
+                        JobManager::calculate_dir_size(std::path::Path::new(&target)).await;
+
+                    if let Some(job) = jobs.lock().await.get_mut(&name) {
+                        if let Ok(snapshots) = snapshots_count_res {
+                            job.snapshot_count = Some(snapshots.len());
+                        }
+                        if let Ok(size) = size_res {
+                            job.total_bytes = Some(size);
+                        }
+                    }
+                });
+            }
+
             Ok(backutil_lib::ipc::ResponseData::PrunesTriggered { succeeded, failed })
         }
     }
