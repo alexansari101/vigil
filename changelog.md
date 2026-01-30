@@ -8,7 +8,33 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
-## [2026-01-29] — build: resolve rustc version incompatibility for `time` dependency
+## [2026-01-30] — bugfix: fix daemon state management (mirroring, stale status)
+
+ **What changed:**
+
+- Refactored `JobManager` to support granular and cross-set status refreshes.
+- Implemented `refresh_set_status` for individual backup set updates.
+- Added `refresh_related_sets` to synchronize status across sets sharing the same Restic repository.
+- Updated `sync_config` to always trigger a full background refresh of all sets on config reload.
+- Refactored `job_worker` to accept `JobManager` directly for simplified refresh triggers.
+- Improved repo access error handling to clear stale metrics instead of preserving them.
+
+ **Why:**
+
+- Resolves issues where backup sets with the same target mirrored each other's status incorrectly.
+- Fixes stale status reports after a backup set's target was changed in `config.toml`.
+- Fixes persistent stale status after a repository was purged (repository deleted).
+
+ **Files affected:**
+
+- crates/backutil-daemon/src/manager.rs (modified)
+
+ **Testing notes:**
+
+- Verified with a reproduction script covering mirroring, target change, and purge scenarios.
+- Verified all workspace integration tests (including ignored ones) pass.
+
+---
 
  **What changed:**
 

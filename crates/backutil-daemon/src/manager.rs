@@ -14,11 +14,12 @@ use tracing::{debug, error, info, warn};
 /// How long to wait for restic mount process to exit gracefully after fusermount3 -u
 const MOUNT_GRACEFUL_EXIT_TIMEOUT_SECS: u64 = 2;
 
+#[derive(Clone)]
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, Job>>>,
     executor: Arc<ResticExecutor>,
     /// Global retention policy for fallback when per-set retention is not specified.
-    global_retention: Mutex<Option<RetentionPolicy>>,
+    global_retention: Arc<Mutex<Option<RetentionPolicy>>>,
     /// Broadcast sender for async events (e.g. backup completion)
     event_tx: broadcast::Sender<Response>,
     /// Token to signal shutdown
@@ -60,7 +61,7 @@ impl JobManager {
         Self {
             jobs: Arc::new(Mutex::new(jobs)),
             executor: Arc::new(ResticExecutor::new()),
-            global_retention: Mutex::new(config.global.retention.clone()),
+            global_retention: Arc::new(Mutex::new(config.global.retention.clone())),
             event_tx,
             shutdown_token,
         }
@@ -73,95 +74,189 @@ impl JobManager {
     /// Queries restic for the latest snapshot of each backup set and populates `last_backup`.
     /// This should be called on daemon startup.
     pub async fn initialize_status(&self) {
+        let names: Vec<String> = {
+            let jobs = self.jobs.lock().await;
+            jobs.keys().cloned().collect()
+        };
+
+        for name in names {
+            self.refresh_set_status(&name).await;
+        }
+    }
+
+    /// Refresh status for a specific backup set.
+    async fn refresh_set_status(&self, set_name: &str) {
+        let job_info = {
+            let jobs = self.jobs.lock().await;
+            jobs.get(set_name).map(|j| (j.set.clone(), j.is_mounted))
+        };
+
+        let Some((set, _is_mounted)) = job_info else {
+            return;
+        };
+
+        debug!("Refreshing status for backup set '{}'", set_name);
+
+        let snapshots_res = self
+            .executor
+            .snapshots(&set.target, Some(1), Some(self.shutdown_token.clone()))
+            .await;
+
+        let size_res = Self::calculate_dir_size(std::path::Path::new(&set.target)).await;
+
         let mut jobs = self.jobs.lock().await;
-        for (name, job) in jobs.iter_mut() {
-            debug!("Initializing status for backup set '{}'", name);
-            // We pass None for token here as this is startup and we generally want it to complete
-            // unless shutdown happens *during* startup (less common, but could pass token if strict)
-            match self.executor.snapshots(&job.set.target, None, None).await {
+        if let Some(job) = jobs.get_mut(set_name) {
+            // Update snapshot info
+            match snapshots_res {
                 Ok(snapshots) => {
-                    job.snapshot_count = Some(snapshots.len());
+                    // We only requested limit 1, but we still need to know total count if possible.
+                    // Actually, if we want total count, we shouldn't limit to 1.
+                    // But for "last backup" info, limit 1 is fine.
+                    // Let's re-query without limit for the count if we want it to be accurate.
+                    // Or we can just use the provided snapshots vector if it's small.
+                    // Given we want to be efficient, let's query with limit 1 for details,
+                    // and maybe we need another way to get the count.
+                    // For now, let's just query all snapshots to keep it simple and accurate.
                     if let Some(latest) = snapshots.first() {
-                        debug!("Found latest snapshot for '{}': {}", name, latest.id);
                         job.last_backup = Some(BackupResult {
                             snapshot_id: latest.short_id.clone(),
                             timestamp: latest.timestamp,
-                            added_bytes: 0,     // Not available from snapshots command
-                            duration_secs: 0.0, // Not available from snapshots command
+                            added_bytes: 0,
+                            duration_secs: 0.0,
                             success: true,
                             error_message: None,
                         });
                     } else {
-                        debug!("No snapshots found for '{}'", name);
+                        job.last_backup = None;
+                    }
+
+                    // To get total count accurately, we need to query without limit.
+                    // Let's do that in a separate step or just query all here.
+                    // For simplicity, let's query all here.
+                    if let Ok(all_snapshots) = self
+                        .executor
+                        .snapshots(&set.target, None, Some(self.shutdown_token.clone()))
+                        .await
+                    {
+                        job.snapshot_count = Some(all_snapshots.len());
                     }
                 }
                 Err(e) => {
-                    warn!("Failed to query snapshots for '{}': {}", name, e);
-                    // We don't fail initialization if one repository is unreachable
+                    warn!("Failed to query snapshots for '{}': {}", set_name, e);
+                    let err_str = e.to_string();
+                    if err_str.contains("repository does not exist")
+                        || err_str.contains("no such file or directory")
+                        || err_str.contains("failed to execute restic")
+                    {
+                        job.last_backup = None;
+                        job.snapshot_count = Some(0);
+                    }
                 }
             }
 
-            // Calculate repo size
-            match Self::calculate_dir_size(std::path::Path::new(&job.set.target)).await {
+            // Update size info
+            match size_res {
                 Ok(size_opt) => job.total_bytes = size_opt,
-                Err(e) => warn!("Failed to calculate repo size for '{}': {}", name, e),
+                Err(e) => warn!("Failed to calculate repo size for '{}': {}", set_name, e),
             }
         }
     }
 
     pub async fn sync_config(&self, config: &Config) -> Result<()> {
-        let mut jobs = self.jobs.lock().await;
-        let new_set_names: std::collections::HashSet<String> =
-            config.backup_sets.iter().map(|s| s.name.clone()).collect();
+        let mut sets_to_refresh = Vec::new();
+        {
+            let mut jobs = self.jobs.lock().await;
+            let new_set_names: std::collections::HashSet<String> =
+                config.backup_sets.iter().map(|s| s.name.clone()).collect();
 
-        // 1. Identify and handle removed sets
-        let removed_set_names: Vec<String> = jobs
-            .keys()
-            .filter(|name| !new_set_names.contains(*name))
-            .cloned()
-            .collect();
+            // 1. Identify and handle removed sets
+            let removed_set_names: Vec<String> = jobs
+                .keys()
+                .filter(|name| !new_set_names.contains(*name))
+                .cloned()
+                .collect();
 
-        for name in removed_set_names {
-            info!("Backup set '{}' removed from config, cleaning up...", name);
-            if let Some(mut job) = jobs.remove(&name) {
-                // Unmount if mounted
-                if let Err(e) = Self::perform_unmount(&name, &mut job).await {
-                    error!("Failed to unmount removed set '{}': {}", name, e);
+            for name in removed_set_names {
+                info!("Backup set '{}' removed from config, cleaning up...", name);
+                if let Some(mut job) = jobs.remove(&name) {
+                    // Unmount if mounted
+                    if let Err(e) = Self::perform_unmount(&name, &mut job).await {
+                        error!("Failed to unmount removed set '{}': {}", name, e);
+                    }
                 }
             }
-        }
 
-        // 2. Add or update remaining sets
-        for set in &config.backup_sets {
-            if let Some(job) = jobs.get_mut(&set.name) {
-                // Update existing job config
-                debug!("Updating config for backup set '{}'", set.name);
-                job.set = set.clone();
-            } else {
-                // Add new job
-                info!("New backup set '{}' added to config", set.name);
-                jobs.insert(
-                    set.name.clone(),
-                    Job {
-                        set: set.clone(),
-                        state: JobState::Idle,
-                        last_change: None,
-                        last_backup: None,
-                        is_mounted: false,
-                        immediate_trigger: false,
-                        mount_process: None,
-                        snapshot_count: None,
-                        total_bytes: None,
-                    },
-                );
+            // 2. Add or update remaining sets
+            for set in &config.backup_sets {
+                if let Some(job) = jobs.get_mut(&set.name) {
+                    // If target changed, clear metrics
+                    if job.set.target != set.target {
+                        debug!(
+                            "Target for set '{}' changed from {} to {}, resetting status",
+                            set.name, job.set.target, set.target
+                        );
+                        job.last_backup = None;
+                        job.snapshot_count = None;
+                        job.total_bytes = None;
+                        sets_to_refresh.push(set.name.clone());
+                    }
+                    // Update existing job config
+                    debug!("Updating config for backup set '{}'", set.name);
+                    job.set = set.clone();
+                } else {
+                    // Add new job
+                    info!("New backup set '{}' added to config", set.name);
+                    jobs.insert(
+                        set.name.clone(),
+                        Job {
+                            set: set.clone(),
+                            state: JobState::Idle,
+                            last_change: None,
+                            last_backup: None,
+                            is_mounted: false,
+                            immediate_trigger: false,
+                            mount_process: None,
+                            snapshot_count: None,
+                            total_bytes: None,
+                        },
+                    );
+                }
+                // Always refresh status on config sync to catch external changes (like purge or manual repo deletion)
+                sets_to_refresh.push(set.name.clone());
             }
+
+            // 3. Update global retention
+            let mut global_retention = self.global_retention.lock().await;
+            *global_retention = config.global.retention.clone();
         }
 
-        // 3. Update global retention
-        let mut global_retention = self.global_retention.lock().await;
-        *global_retention = config.global.retention.clone();
+        // Trigger background refresh for new/changed sets
+        for name in sets_to_refresh {
+            let manager = self.clone();
+            tokio::spawn(async move {
+                manager.refresh_set_status(&name).await;
+            });
+        }
 
         Ok(())
+    }
+
+    /// Refresh status for all sets that share the same target repository.
+    async fn refresh_related_sets(&self, target: &str, exclude_name: &str) {
+        let related_names: Vec<String> = {
+            let jobs = self.jobs.lock().await;
+            jobs.iter()
+                .filter(|(name, job)| job.set.target == target && *name != exclude_name)
+                .map(|(name, _)| name.clone())
+                .collect()
+        };
+
+        for name in related_names {
+            let manager = self.clone();
+            tokio::spawn(async move {
+                manager.refresh_set_status(&name).await;
+            });
+        }
     }
 
     pub async fn handle_file_change(&self, set_name: &str) -> Result<()> {
@@ -181,21 +276,11 @@ impl JobManager {
                         set_name, debounce_secs
                     );
 
-                    let jobs_clone = self.jobs.clone();
-                    let executor_clone = self.executor.clone();
+                    let manager = self.clone();
                     let set_name_owned = set_name.to_string();
-                    let event_tx = self.event_tx.clone();
-                    let shutdown_token = self.shutdown_token.clone();
 
                     tokio::spawn(async move {
-                        Self::job_worker(
-                            jobs_clone,
-                            executor_clone,
-                            set_name_owned,
-                            event_tx,
-                            shutdown_token,
-                        )
-                        .await;
+                        Self::job_worker(manager, set_name_owned).await;
                     });
                 }
                 JobState::Debouncing { .. } => {
@@ -234,21 +319,11 @@ impl JobManager {
                     job.state = JobState::Running; // Set to running immediately to prevent debounce start
                     info!("Immediate backup triggered for set {}", set_name);
 
-                    let jobs_clone = self.jobs.clone();
-                    let executor_clone = self.executor.clone();
+                    let manager = self.clone();
                     let set_name_owned = set_name.to_string();
-                    let event_tx = self.event_tx.clone();
-                    let shutdown_token = self.shutdown_token.clone();
 
                     tokio::spawn(async move {
-                        Self::job_worker(
-                            jobs_clone,
-                            executor_clone,
-                            set_name_owned,
-                            event_tx,
-                            shutdown_token,
-                        )
-                        .await;
+                        Self::job_worker(manager, set_name_owned).await;
                     });
                 }
             }
@@ -258,13 +333,11 @@ impl JobManager {
         }
     }
 
-    async fn job_worker(
-        jobs: Arc<Mutex<HashMap<String, Job>>>,
-        executor: Arc<ResticExecutor>,
-        set_name: String,
-        event_tx: broadcast::Sender<Response>,
-        shutdown_token: CancellationToken,
-    ) {
+    async fn job_worker(manager: JobManager, set_name: String) {
+        let jobs = manager.jobs.clone();
+        let executor = manager.executor.clone();
+        let event_tx = manager.event_tx.clone();
+        let shutdown_token = manager.shutdown_token.clone();
         loop {
             // Check for shutdown at start of loop
             if shutdown_token.is_cancelled() {
@@ -444,30 +517,12 @@ impl JobManager {
                     }
 
                     if let Some(target) = metrics_target {
-                        let jobs = jobs.clone();
-                        let executor = executor.clone();
-                        let set_name = set_name.clone();
-                        let token = shutdown_token.clone();
+                        let manager = manager.clone();
+                        let set_name_clone = set_name.clone();
 
                         tokio::spawn(async move {
-                            // Metrics calculation is low priority, can just stop if shutdown
-                            if token.is_cancelled() {
-                                return;
-                            }
-
-                            let snapshots_count_res =
-                                executor.snapshots(&target, None, Some(token.clone())).await;
-                            let size_res =
-                                Self::calculate_dir_size(std::path::Path::new(&target)).await;
-
-                            if let Some(job) = jobs.lock().await.get_mut(&set_name) {
-                                if let Ok(snapshots) = snapshots_count_res {
-                                    job.snapshot_count = Some(snapshots.len());
-                                }
-                                if let Ok(size_opt) = size_res {
-                                    job.total_bytes = size_opt;
-                                }
-                            }
+                            manager.refresh_set_status(&set_name_clone).await;
+                            manager.refresh_related_sets(&target, &set_name_clone).await;
                         });
                         break;
                     }
@@ -660,27 +715,12 @@ impl JobManager {
 
             // Refresh metrics after prune
             let target = effective_set.target.clone();
-            let jobs = self.jobs.clone();
-            let executor = self.executor.clone();
-            let refresh_name = name.clone();
-            let token = self.shutdown_token.clone();
+            let manager = self.clone();
+            let set_name_clone = name.clone();
 
             tokio::spawn(async move {
-                if token.is_cancelled() {
-                    return;
-                }
-                let snapshots_count_res =
-                    executor.snapshots(&target, None, Some(token.clone())).await;
-                let size_res = JobManager::calculate_dir_size(std::path::Path::new(&target)).await;
-
-                if let Some(job) = jobs.lock().await.get_mut(&refresh_name) {
-                    if let Ok(snapshots) = snapshots_count_res {
-                        job.snapshot_count = Some(snapshots.len());
-                    }
-                    if let Ok(size_opt) = size_res {
-                        job.total_bytes = size_opt;
-                    }
-                }
+                manager.refresh_set_status(&set_name_clone).await;
+                manager.refresh_related_sets(&target, &set_name_clone).await;
             });
 
             Ok(backutil_lib::ipc::ResponseData::PruneResult {
@@ -728,26 +768,10 @@ impl JobManager {
 
             // Refresh metrics for successfully pruned sets
             for (name, target) in targets_to_refresh {
-                let jobs = self.jobs.clone();
-                let executor = self.executor.clone();
-                let token = self.shutdown_token.clone();
+                let manager = self.clone();
                 tokio::spawn(async move {
-                    if token.is_cancelled() {
-                        return;
-                    }
-                    let snapshots_count_res =
-                        executor.snapshots(&target, None, Some(token.clone())).await;
-                    let size_res =
-                        JobManager::calculate_dir_size(std::path::Path::new(&target)).await;
-
-                    if let Some(job) = jobs.lock().await.get_mut(&name) {
-                        if let Ok(snapshots) = snapshots_count_res {
-                            job.snapshot_count = Some(snapshots.len());
-                        }
-                        if let Ok(size_opt) = size_res {
-                            job.total_bytes = size_opt;
-                        }
-                    }
+                    manager.refresh_set_status(&name).await;
+                    manager.refresh_related_sets(&target, &name).await;
                 });
             }
 
