@@ -631,15 +631,16 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
 
     // Follow mode
     pos = size;
+    let mut current_log_path = log_path;
     loop {
-        let metadata = tokio::fs::metadata(&log_path).await?;
+        let metadata = tokio::fs::metadata(&current_log_path).await?;
         let current_size = metadata.len();
 
         if current_size < pos {
             // Log file was truncated or rotated - re-open the file
             println!("--- Log file truncated ---");
             std::io::stdout().flush()?;
-            file = tokio::fs::File::open(&log_path).await?;
+            file = tokio::fs::File::open(&current_log_path).await?;
             pos = 0;
         }
 
@@ -653,6 +654,17 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
         }
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Check for log rotation (e.g., new file after midnight)
+        if let Some(latest) = find_latest_log() {
+            if latest != current_log_path {
+                println!("--- Log rotated to {} ---", latest.display());
+                std::io::stdout().flush()?;
+                current_log_path = latest;
+                file = tokio::fs::File::open(&current_log_path).await?;
+                pos = 0;
+            }
+        }
     }
 }
 

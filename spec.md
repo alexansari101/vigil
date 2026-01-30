@@ -223,7 +223,7 @@ Communication between CLI/TUI and daemon uses JSON over Unix socket. Each messag
                └─────────┘
 ```
 
-**Note on graceful shutdown:** When the daemon receives a shutdown signal (SIGTERM/SIGINT) while a backup is in the `Running` state, the current implementation allows the restic process to complete before shutting down. Future implementations should consider adding cancellation support to abort in-progress backups gracefully.
+**Note on graceful shutdown:** When the daemon receives a shutdown signal (SIGTERM/SIGINT) while a backup is in the `Running` state, in-progress restic processes are cancelled via `CancellationToken` propagation, allowing the daemon to shut down without waiting for long-running backups to complete.
 
 ## 8. Systemd Unit (Example)
 

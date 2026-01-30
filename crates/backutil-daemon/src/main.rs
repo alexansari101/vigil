@@ -190,8 +190,8 @@ impl Daemon {
                     }
                 }
                 _ = self.shutdown_token.cancelled() => {
-                   info!("Shutdown requested via IPC, shutting down...");
-                   break;
+                    info!("Shutdown requested via IPC, shutting down...");
+                    break;
                 }
             }
         }

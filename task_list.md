@@ -148,6 +148,38 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ---
 
+## Test Reliability
+
+### 41. [ ] Fix test_cli_mount_unmount deterministic failure
+
+The mount integration test in `crates/backutil/tests/cli_mount_test.rs` fails deterministically when run with `--include-ignored`. The daemon is spawned via `cargo run -p backutil-daemon` at line 58, then the test sleeps for a fixed 2 seconds (line 69) before issuing a `backup` command. The daemon does not establish its IPC socket within that window, so the backup command fails with "Daemon is not running."
+
+**Acceptance criteria:**
+
+- Replace the fixed 2-second sleep with a polling loop that checks for daemon readiness (e.g., poll the IPC socket path for existence, or attempt a `ping` command via the CLI, with a reasonable timeout like 30 seconds)
+- The test passes reliably when run via `cargo test -p backutil --test cli_mount_test -- --include-ignored`
+- The test still cleans up the daemon process on completion (success or failure)
+- No changes to production code — fix is test-only
+- `cargo test --workspace` (without `--include-ignored`) continues to pass
+
+---
+
+### 42. [ ] Fix flaky daemon manager tests caused by shared env vars
+
+Three `#[ignore]`d tests in `crates/backutil-daemon/src/manager.rs` — `test_manual_trigger` (line 956), `test_debounce_logic` (line 870), and `test_initialize_status` (line 1035) — use `std::env::set_var("XDG_CONFIG_HOME", ...)` and `std::env::set_var("XDG_DATA_HOME", ...)` to configure per-test temp directories. Since `#[tokio::test]` runs tests on a shared thread pool, these env var mutations are process-global and race with each other. When tests run in parallel, one test's `set_var` can overwrite another's, causing the password file to be looked up at the wrong path.
+
+**Acceptance criteria:**
+
+- Eliminate the env var race. Options include:
+  - Run the three tests sequentially (e.g., `#[serial_test::serial]`), OR
+  - Refactor `paths::password_path()` (and any other path functions that read env vars) to accept an override/context parameter so tests don't need `set_var`, OR
+  - Use `std::sync::Mutex` or similar to serialize access to the env vars across the three tests
+- All three tests (`test_manual_trigger`, `test_debounce_logic`, `test_initialize_status`) pass reliably when run together via `cargo test -p backutil-daemon --lib -- --include-ignored`
+- No regressions: `cargo test --workspace` and `cargo test --workspace -- --include-ignored --skip test_cli_mount_unmount` pass
+- Prefer the simplest solution — `serial_test` crate or a shared mutex is fine if refactoring the path functions would be too invasive
+
+---
+
 ## Phase 6: CLI UX Polish
 
 *All Phase 6 tasks completed.*

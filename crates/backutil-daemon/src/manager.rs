@@ -268,7 +268,7 @@ impl JobManager {
         loop {
             // Check for shutdown at start of loop
             if shutdown_token.is_cancelled() {
-                info!("Detailed shutdown check: stopping worker for {}", set_name);
+                info!("Shutdown: stopping worker for {}", set_name);
                 break;
             }
 
