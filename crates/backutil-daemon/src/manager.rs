@@ -30,6 +30,8 @@ struct Job {
     is_mounted: bool,
     immediate_trigger: bool,
     mount_process: Option<tokio::process::Child>,
+    snapshot_count: Option<usize>,
+    total_bytes: Option<u64>,
 }
 
 impl JobManager {
@@ -46,6 +48,8 @@ impl JobManager {
                     is_mounted: false,
                     immediate_trigger: false,
                     mount_process: None,
+                    snapshot_count: None,
+                    total_bytes: None,
                 },
             );
         }
@@ -68,8 +72,9 @@ impl JobManager {
         let mut jobs = self.jobs.lock().await;
         for (name, job) in jobs.iter_mut() {
             debug!("Initializing status for backup set '{}'", name);
-            match self.executor.snapshots(&job.set.target, Some(1)).await {
+            match self.executor.snapshots(&job.set.target, None).await {
                 Ok(snapshots) => {
+                    job.snapshot_count = Some(snapshots.len());
                     if let Some(latest) = snapshots.first() {
                         debug!("Found latest snapshot for '{}': {}", name, latest.id);
                         job.last_backup = Some(BackupResult {
@@ -88,6 +93,12 @@ impl JobManager {
                     warn!("Failed to query snapshots for '{}': {}", name, e);
                     // We don't fail initialization if one repository is unreachable
                 }
+            }
+
+            // Calculate repo size
+            match Self::calculate_dir_size(std::path::Path::new(&job.set.target)).await {
+                Ok(size) => job.total_bytes = Some(size),
+                Err(e) => warn!("Failed to calculate repo size for '{}': {}", name, e),
             }
         }
     }
@@ -133,6 +144,8 @@ impl JobManager {
                         is_mounted: false,
                         immediate_trigger: false,
                         mount_process: None,
+                        snapshot_count: None,
+                        total_bytes: None,
                     },
                 );
             }
@@ -325,57 +338,84 @@ impl JobManager {
                         backup_result.success
                     );
 
-                    let mut jobs_lock = jobs.lock().await;
-                    if let Some(job) = jobs_lock.get_mut(&set_name) {
-                        job.last_backup = Some(backup_result.clone());
-                        if !backup_result.success {
-                            job.state = JobState::Error;
-                            let err_msg = backup_result
-                                .error_message
-                                .clone()
-                                .unwrap_or_else(|| "Unknown error".to_string());
-                            error!("Backup failed for set {}: {}", set_name, err_msg);
-                            let _ = notify_rust::Notification::new()
-                                .summary("Backup Failed")
-                                .body(&format!(
-                                    "Backup for set '{}' failed: {}",
-                                    set_name, err_msg
-                                ))
-                                .icon("dialog-error")
-                                .show();
+                    let mut metrics_target = None;
+                    {
+                        let mut jobs_lock = jobs.lock().await;
+                        if let Some(job) = jobs_lock.get_mut(&set_name) {
+                            job.last_backup = Some(backup_result.clone());
+                            if !backup_result.success {
+                                job.state = JobState::Error;
+                                let err_msg = backup_result
+                                    .error_message
+                                    .clone()
+                                    .unwrap_or_else(|| "Unknown error".to_string());
+                                error!("Backup failed for set {}: {}", set_name, err_msg);
+                                let _ = notify_rust::Notification::new()
+                                    .summary("Backup Failed")
+                                    .body(&format!(
+                                        "Backup for set '{}' failed: {}",
+                                        set_name, err_msg
+                                    ))
+                                    .icon("dialog-error")
+                                    .show();
 
-                            // Broadcast failure event
-                            let _ = event_tx.send(Response::Ok(Some(ResponseData::BackupFailed {
-                                set_name: set_name.clone(),
-                                error: err_msg,
-                            })));
-                            break;
-                        }
+                                // Broadcast failure event
+                                let _ =
+                                    event_tx.send(Response::Ok(Some(ResponseData::BackupFailed {
+                                        set_name: set_name.clone(),
+                                        error: err_msg,
+                                    })));
+                                break;
+                            }
 
-                        // Check if new changes occurred during backup
-                        if let Some(last_change) = job.last_change {
-                            if last_change > backup_start_time {
-                                info!(
+                            // Check if new changes occurred during backup
+                            if let Some(last_change) = job.last_change {
+                                if last_change > backup_start_time {
+                                    info!(
                                     "New changes detected for set {} during backup, re-debouncing",
                                     set_name
                                 );
-                                let debounce_secs = job.set.debounce_seconds.unwrap_or(60);
-                                job.state = JobState::Debouncing {
-                                    remaining_secs: debounce_secs,
-                                };
-                                continue;
+                                    let debounce_secs = job.set.debounce_seconds.unwrap_or(60);
+                                    job.state = JobState::Debouncing {
+                                        remaining_secs: debounce_secs,
+                                    };
+                                    continue;
+                                }
                             }
+                            job.state = JobState::Idle;
+
+                            // Broadcast completion event
+                            let _ =
+                                event_tx.send(Response::Ok(Some(ResponseData::BackupComplete {
+                                    set_name: set_name.clone(),
+                                    snapshot_id: backup_result.snapshot_id.clone(),
+                                    added_bytes: backup_result.added_bytes,
+                                    duration_secs: backup_result.duration_secs,
+                                })));
+
+                            metrics_target = Some(job.set.target.clone());
                         }
-                        job.state = JobState::Idle;
+                    }
 
-                        // Broadcast completion event
-                        let _ = event_tx.send(Response::Ok(Some(ResponseData::BackupComplete {
-                            set_name: set_name.clone(),
-                            snapshot_id: backup_result.snapshot_id.clone(),
-                            added_bytes: backup_result.added_bytes,
-                            duration_secs: backup_result.duration_secs,
-                        })));
+                    if let Some(target) = metrics_target {
+                        let jobs = jobs.clone();
+                        let executor = executor.clone();
+                        let set_name = set_name.clone();
 
+                        tokio::spawn(async move {
+                            let snapshots_count_res = executor.snapshots(&target, None).await;
+                            let size_res =
+                                Self::calculate_dir_size(std::path::Path::new(&target)).await;
+
+                            if let Some(job) = jobs.lock().await.get_mut(&set_name) {
+                                if let Ok(snapshots) = snapshots_count_res {
+                                    job.snapshot_count = Some(snapshots.len());
+                                }
+                                if let Ok(size) = size_res {
+                                    job.total_bytes = Some(size);
+                                }
+                            }
+                        });
                         break;
                     }
                 }
@@ -390,10 +430,6 @@ impl JobManager {
                         ))
                         .icon("dialog-error")
                         .show();
-                    let mut jobs_lock = jobs.lock().await;
-                    if let Some(job) = jobs_lock.get_mut(&set_name) {
-                        job.state = JobState::Error;
-                    }
 
                     // Broadcast failure event
                     let _ = event_tx.send(Response::Ok(Some(ResponseData::BackupFailed {
@@ -462,6 +498,8 @@ impl JobManager {
                 },
                 target: job.set.target.clone().into(),
                 is_mounted: job.is_mounted,
+                snapshot_count: job.snapshot_count,
+                total_bytes: job.total_bytes,
             });
         }
         statuses
@@ -643,6 +681,24 @@ impl JobManager {
         job.mount_process = None;
 
         Ok(())
+    }
+
+    async fn calculate_dir_size(path: &std::path::Path) -> Result<u64> {
+        if !path.exists() {
+            return Ok(0);
+        }
+        let mut total_size = 0;
+        let mut entries = tokio::fs::read_dir(path).await?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            let metadata = entry.metadata().await?;
+            if metadata.is_dir() {
+                total_size += Box::pin(Self::calculate_dir_size(&entry.path())).await?;
+            } else {
+                total_size += metadata.len();
+            }
+        }
+        Ok(total_size)
     }
 }
 
@@ -886,6 +942,23 @@ mod tests {
             original_snapshot_id
         );
         assert!(status2[0].last_backup.as_ref().unwrap().success);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_calculate_dir_size() -> Result<()> {
+        let tmp = tempdir()?;
+        let path = tmp.path();
+
+        // Create some files
+        fs::write(path.join("file1.txt"), "hello")?; // 5 bytes
+        fs::write(path.join("file2.txt"), "world")?; // 5 bytes
+        fs::create_dir(path.join("subdir"))?;
+        fs::write(path.join("subdir/file3.txt"), "test")?; // 4 bytes
+
+        let size = JobManager::calculate_dir_size(path).await?;
+        assert_eq!(size, 14);
 
         Ok(())
     }

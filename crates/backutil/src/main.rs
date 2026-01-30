@@ -1390,16 +1390,16 @@ fn display_status(sets: Vec<SetStatus>) {
     }
 
     println!(
-        "{:<15} {:<15} {:<20} {:<10}",
-        "NAME", "STATE", "LAST BACKUP", "MOUNTED"
+        "{:<15} {:<15} {:<10} {:<10} {:<20} {:<10}",
+        "NAME", "STATE", "SNAPSHOTS", "SIZE", "LAST BACKUP", "MOUNTED"
     );
-    println!("{}", "-".repeat(65));
+    println!("{}", "-".repeat(95));
 
     for set in sets {
         let state_str = match set.state {
             JobState::Idle => "Idle".to_string(),
             JobState::Debouncing { remaining_secs } => {
-                format!("Debouncing ({:?}s)", remaining_secs)
+                format!("Debounce({}s)", remaining_secs)
             }
             JobState::Running => "Running".to_string(),
             JobState::Error => "Error".to_string(),
@@ -1413,7 +1413,7 @@ fn display_status(sets: Vec<SetStatus>) {
                 if result.success {
                     time_str
                 } else {
-                    format!("{} (failed)", time_str)
+                    format!("{} (fail)", time_str)
                 }
             }
             None => "Never".to_string(),
@@ -1421,9 +1421,19 @@ fn display_status(sets: Vec<SetStatus>) {
 
         let mounted_str = if set.is_mounted { "Yes" } else { "No" };
 
+        let snapshots_str = set
+            .snapshot_count
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "-".to_string());
+
+        let size_str = set
+            .total_bytes
+            .map(|b| format_size(b))
+            .unwrap_or_else(|| "-".to_string());
+
         println!(
-            "{:<15} {:<15} {:<20} {:<10}",
-            set.name, state_str, last_backup_str, mounted_str
+            "{:<15} {:<15} {:<10} {:<10} {:<20} {:<10}",
+            set.name, state_str, snapshots_str, size_str, last_backup_str, mounted_str
         );
     }
 }

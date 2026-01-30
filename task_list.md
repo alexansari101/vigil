@@ -170,25 +170,6 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ---
 
-### 32. [ ] Enhanced status output with storage metrics
-
-Enhance `backutil status` to include storage health. This information is critical for CLI users to verify their backup growth and version history at a glance.
-
-**Acceptance criteria:**
-
-- Status output includes snapshot count per backup set
-- Status output includes human-readable repository size (e.g., "1.2 GiB")
-- Status command remains responsive (target: <2s for typical use)
-- `[BLOCKED BY: #31]`
-
-**Considerations:**
-
-- `restic snapshots --json` returns snapshot list (fast)
-- `restic stats --json` returns size info but can be slow for large repos
-- Consider whether to query live on each status call vs cache in daemon state
-- If caching, when to refresh? (after backup, after prune, periodically?)
-- Current `SetStatus` struct in spec.md may need new fields
-
 ---
 
 ---
@@ -239,3 +220,4 @@ Enhance `backutil status` to include storage health. This information is critica
 | 36 | CLI `check` command | `1f921a0` | 2026-01-29 |
 | 38 | Plain English help text | `c65fccd` | 2026-01-29 |
 | 39 | Global `--quiet` and `--json` flags | `abcc197` | 2026-01-29 |
+| 32 | Enhanced status output with storage metrics | `78e4520` | 2026-01-30 |

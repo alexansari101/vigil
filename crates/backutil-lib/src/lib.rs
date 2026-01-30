@@ -42,6 +42,8 @@ mod tests {
             source_paths: vec![PathBuf::from("/home/user/docs")],
             target: PathBuf::from("/mnt/backup"),
             is_mounted: false,
+            snapshot_count: Some(5),
+            total_bytes: Some(1024 * 1024),
         };
 
         let resp = Response::Ok(Some(ResponseData::Status { sets: vec![status] }));

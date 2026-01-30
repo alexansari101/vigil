@@ -8,6 +8,34 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-30] — feature: enhanced status metrics
+
+ **What changed:**
+
+- Updated `backutil status` output to include `SNAPSHOTS` (count) and `SIZE` (repository size) columns.
+- Enhanced `SetStatus` shared type with `snapshot_count` and `total_bytes` fields.
+- Implemented asynchronous metrics calculation in daemon's `job_worker` after successful backups.
+- Added `calculate_dir_size` helper in `JobManager` to compute repository size recursively.
+- Updated unit tests to verify directory size calculation logic.
+
+ **Why:**
+
+- Implements Task #32. Provides users with immediate visibility into their backup storage usage and snapshot history quantity, allowing for better monitoring without running separate commands.
+
+ **Files affected:**
+
+- crates/backutil-lib/src/lib.rs (modified)
+- crates/backutil-daemon/src/manager.rs (modified)
+- crates/backutil/src/main.rs (modified)
+
+ **Testing notes:**
+
+- Manually verified deadlock fix (moved metrics calculation out of lock scope).
+- Verified logic with `test_calculate_dir_size` unit test.
+- Verified that daemon tests pass.
+
+ ---
+
 ## [2026-01-29] — feature: global --quiet and --json flags
 
 **What changed:**

@@ -31,6 +31,10 @@ pub struct SetStatus {
     pub target: PathBuf,
     /// Whether the backup set is currently mounted via FUSE.
     pub is_mounted: bool,
+    /// Number of snapshots in the repository.
+    pub snapshot_count: Option<usize>,
+    /// Total size of the repository directory in bytes.
+    pub total_bytes: Option<u64>,
 }
 
 /// Results of a single backup operation.
