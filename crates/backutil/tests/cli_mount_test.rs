@@ -1,8 +1,17 @@
 use anyhow::Result;
 use std::fs;
-use std::process::Command;
+use std::process::{Child, Command};
 use std::time::Duration;
 use tempfile::TempDir;
+
+struct DaemonGuard(Child);
+
+impl Drop for DaemonGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
 
 #[test]
 #[ignore]
@@ -60,7 +69,7 @@ target = "{}"
     let runtime_dir = temp_dir.path().join("runtime");
     fs::create_dir_all(&runtime_dir)?;
 
-    let mut daemon = Command::new("cargo")
+    let daemon = Command::new("cargo")
         .arg("run")
         .arg("-p")
         .arg("backutil-daemon")
@@ -70,6 +79,7 @@ target = "{}"
         .env("XDG_RUNTIME_DIR", &runtime_dir)
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .spawn()?;
+    let _daemon_guard = DaemonGuard(daemon);
 
     // Wait for daemon to be ready
     let mut ready = false;
@@ -180,8 +190,6 @@ target = "{}"
         .env("XDG_RUNTIME_DIR", &runtime_dir)
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .status();
-
-    let _ = daemon.kill();
 
     Ok(())
 }
