@@ -103,6 +103,8 @@ enum Commands {
         #[arg(long)]
         config_only: bool,
     },
+    /// Reload the daemon configuration
+    Reload,
 }
 
 #[tokio::main]
@@ -158,6 +160,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Check { set, config_only } => {
             handle_check(set, config_only, json, quiet).await?;
+        }
+        Commands::Reload => {
+            handle_reload(json, quiet).await?;
         }
         Commands::Tui => {
             println!("Command not yet implemented.");
@@ -1328,6 +1333,35 @@ async fn handle_snapshots(
             } else {
                 std::process::exit(1);
             }
+        }
+        _ => {
+            println!("Unexpected response from daemon.");
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_reload(json: bool, quiet: bool) -> anyhow::Result<()> {
+    let mut stream = connect_to_daemon().await?;
+    let mut reader = BufReader::new(&mut stream);
+    send_request(reader.get_mut(), Request::ReloadConfig).await?;
+
+    let response = receive_response(&mut reader).await?;
+    match response {
+        Response::Ok(_) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({ "status": "success", "message": "Configuration reload triggered" })
+                );
+            } else if !quiet {
+                println!("Successfully triggered configuration reload.");
+            }
+        }
+        Response::Error { code, message } => {
+            eprintln!("Error triggering reload ({}): {}", code, message);
+            std::process::exit(1);
         }
         _ => {
             println!("Unexpected response from daemon.");

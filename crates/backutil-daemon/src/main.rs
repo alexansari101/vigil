@@ -99,6 +99,7 @@ impl Daemon {
             .context("Failed to start file watcher")?;
 
         let (reload_tx, mut reload_rx) = tokio::sync::mpsc::channel(1);
+        let (config_update_tx, mut config_update_rx) = tokio::sync::mpsc::channel::<Config>(1);
 
         // Watch config file for changes
         let config_path = std::env::var("BACKUTIL_CONFIG")
@@ -166,26 +167,56 @@ impl Daemon {
                     }
                 }
                 _ = reload_rx.recv() => {
-                    info!("Reloading configuration...");
-                    match load_config() {
-                        Ok(new_config) => {
-                            if let Err(e) = self.job_manager.sync_config(&new_config).await {
-                                error!("Failed to sync job manager with new config: {}", e);
-                            } else {
-                                // Re-create watcher with new config
-                                match FileWatcher::new(&new_config, watcher_tx.clone()) {
-                                    Ok(new_watcher) => {
-                                        _watcher = new_watcher;
-                                        info!("Configuration reloaded and file watcher updated");
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to restart file watcher after config reload: {}", e);
+                    let config_update_tx = config_update_tx.clone();
+                    let shutdown_token = self.shutdown_token.clone();
+
+                    tokio::spawn(async move {
+                        // Wait a short duration to avoid reading a partial file during atomic saves
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+                        let mut attempts = 0;
+                        let max_attempts = 3;
+                        let retry_delay = std::time::Duration::from_secs(2);
+
+                        while attempts < max_attempts {
+                            if shutdown_token.is_cancelled() {
+                                return;
+                            }
+
+                            debug!("Reloading configuration (attempt {}/{})...", attempts + 1, max_attempts);
+                            match load_config() {
+                                Ok(new_config) => {
+                                    info!("Configuration loaded successfully");
+                                    let _ = config_update_tx.send(new_config).await;
+                                    return;
+                                }
+                                Err(e) => {
+                                    attempts += 1;
+                                    if attempts < max_attempts {
+                                        warn!("Failed to load configuration (attempt {}): {}. Retrying in {:?}...", attempts, e, retry_delay);
+                                        tokio::time::sleep(retry_delay).await;
+                                    } else {
+                                        error!("Failed to load configuration after {} attempts: {}", max_attempts, e);
                                     }
                                 }
                             }
                         }
-                        Err(e) => {
-                            error!("Failed to load configuration for reload: {}", e);
+                    });
+                }
+                Some(new_config) = config_update_rx.recv() => {
+                    info!("Applying new configuration...");
+                    if let Err(e) = self.job_manager.sync_config(&new_config).await {
+                        error!("Failed to sync job manager with new config: {}", e);
+                    } else {
+                        // Re-create watcher with new config
+                        match FileWatcher::new(&new_config, watcher_tx.clone()) {
+                            Ok(new_watcher) => {
+                                _watcher = new_watcher;
+                                info!("Configuration reloaded and file watcher updated");
+                            }
+                            Err(e) => {
+                                error!("Failed to restart file watcher after config reload: {}", e);
+                            }
                         }
                     }
                 }
