@@ -97,7 +97,7 @@ impl JobManager {
 
             // Calculate repo size
             match Self::calculate_dir_size(std::path::Path::new(&job.set.target)).await {
-                Ok(size) => job.total_bytes = Some(size),
+                Ok(size_opt) => job.total_bytes = size_opt,
                 Err(e) => warn!("Failed to calculate repo size for '{}': {}", name, e),
             }
         }
@@ -411,8 +411,8 @@ impl JobManager {
                                 if let Ok(snapshots) = snapshots_count_res {
                                     job.snapshot_count = Some(snapshots.len());
                                 }
-                                if let Ok(size) = size_res {
-                                    job.total_bytes = Some(size);
+                                if let Ok(size_opt) = size_res {
+                                    job.total_bytes = size_opt;
                                 }
                             }
                         });
@@ -607,8 +607,8 @@ impl JobManager {
                     if let Ok(snapshots) = snapshots_count_res {
                         job.snapshot_count = Some(snapshots.len());
                     }
-                    if let Ok(size) = size_res {
-                        job.total_bytes = Some(size);
+                    if let Ok(size_opt) = size_res {
+                        job.total_bytes = size_opt;
                     }
                 }
             });
@@ -661,8 +661,8 @@ impl JobManager {
                         if let Ok(snapshots) = snapshots_count_res {
                             job.snapshot_count = Some(snapshots.len());
                         }
-                        if let Ok(size) = size_res {
-                            job.total_bytes = Some(size);
+                        if let Ok(size_opt) = size_res {
+                            job.total_bytes = size_opt;
                         }
                     }
                 });
@@ -745,22 +745,27 @@ impl JobManager {
         Ok(())
     }
 
-    async fn calculate_dir_size(path: &std::path::Path) -> Result<u64> {
+    async fn calculate_dir_size(path: &std::path::Path) -> Result<Option<u64>> {
         if !path.exists() {
-            return Ok(0);
+            return Ok(None);
         }
         let mut total_size = 0;
-        let mut entries = tokio::fs::read_dir(path).await?;
+        let mut entries = match tokio::fs::read_dir(path).await {
+            Ok(e) => e,
+            Err(_) => return Ok(None), // treat inaccessible dirs as unknown size
+        };
 
         while let Some(entry) = entries.next_entry().await? {
             let metadata = entry.metadata().await?;
             if metadata.is_dir() {
-                total_size += Box::pin(Self::calculate_dir_size(&entry.path())).await?;
+                if let Some(size) = Box::pin(Self::calculate_dir_size(&entry.path())).await? {
+                    total_size += size;
+                }
             } else {
                 total_size += metadata.len();
             }
         }
-        Ok(total_size)
+        Ok(Some(total_size))
     }
 }
 
@@ -1020,7 +1025,12 @@ mod tests {
         fs::write(path.join("subdir/file3.txt"), "test")?; // 4 bytes
 
         let size = JobManager::calculate_dir_size(path).await?;
-        assert_eq!(size, 14);
+        assert_eq!(size, Some(14));
+
+        // Test non-existent path
+        let non_existent = path.join("does_not_exist");
+        let size = JobManager::calculate_dir_size(&non_existent).await?;
+        assert_eq!(size, None);
 
         Ok(())
     }
