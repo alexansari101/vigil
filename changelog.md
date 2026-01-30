@@ -8,6 +8,28 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-30] — test: fix deterministic failure in cli_mount_test.rs
+
+ **What changed:**
+
+- Replaced fixed 2-second sleep with a polling loop that checks for daemon readiness using `backutil status`.
+- Isolated the test environment by setting `XDG_RUNTIME_DIR` to a temporary directory, preventing interference with other running daemons.
+- Updated backup set source directory in the test to be separate from the daemon's data/log directory, preventing an infinite file-watching loop.
+- Updated test assertions to match the actual production output of the `mount` command.
+
+ **Why:**
+
+- Implements Task #41. Ensures that the mount integration test is stable and deterministic by correctly waiting for the daemon to start and isolating its runtime artifacts.
+
+ **Files affected:**
+
+- crates/backutil/tests/cli_mount_test.rs (modified)
+
+ **Testing notes:**
+
+- Verified that `cargo test -p backutil --test cli_mount_test -- --include-ignored` passes reliably.
+- Verified no regressions in full workspace test suite.
+
 ## [2026-01-30] — feature: robust logging and graceful shutdown
 
  **What changed:**

@@ -148,20 +148,6 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ---
 
-## Test Reliability
-
-### 41. [ ] Fix test_cli_mount_unmount deterministic failure
-
-The mount integration test in `crates/backutil/tests/cli_mount_test.rs` fails deterministically when run with `--include-ignored`. The daemon is spawned via `cargo run -p backutil-daemon` at line 58, then the test sleeps for a fixed 2 seconds (line 69) before issuing a `backup` command. The daemon does not establish its IPC socket within that window, so the backup command fails with "Daemon is not running."
-
-**Acceptance criteria:**
-
-- Replace the fixed 2-second sleep with a polling loop that checks for daemon readiness (e.g., poll the IPC socket path for existence, or attempt a `ping` command via the CLI, with a reasonable timeout like 30 seconds)
-- The test passes reliably when run via `cargo test -p backutil --test cli_mount_test -- --include-ignored`
-- The test still cleans up the daemon process on completion (success or failure)
-- No changes to production code — fix is test-only
-- `cargo test --workspace` (without `--include-ignored`) continues to pass
-
 ---
 
 ### 42. [ ] Fix flaky daemon manager tests caused by shared env vars
@@ -222,3 +208,4 @@ Three `#[ignore]`d tests in `crates/backutil-daemon/src/manager.rs` — `test_ma
 | 39 | Global `--quiet` and `--json` flags | `abcc197` | 2026-01-29 |
 | 32 | Enhanced status output with storage metrics | `231cd49` | 2026-01-30 |
 | 27 | Robust Logging and clean output | `5a20702` | 2026-01-30 |
+| 41 | Fix test_cli_mount_unmount deterministic failure | `a4f4abc` | 2026-01-30 |
