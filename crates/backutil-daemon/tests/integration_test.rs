@@ -10,6 +10,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 use tempfile::tempdir;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 /// End-to-end integration test for file watcher + debounce logic.
 /// This test validates the complete pipeline: file change → watcher → JobManager → state transitions.
@@ -62,7 +63,7 @@ async fn test_file_watcher_to_debounce_integration() -> Result<()> {
     };
 
     // Create JobManager and FileWatcher (mimicking daemon setup)
-    let job_manager = JobManager::new(&config);
+    let job_manager = JobManager::new(&config, CancellationToken::new());
     let (watcher_tx, mut watcher_rx) = mpsc::channel(100);
     let _watcher = FileWatcher::new(&config, watcher_tx)?;
 

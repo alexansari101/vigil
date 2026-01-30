@@ -560,18 +560,36 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
     use std::io::Write;
     use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt};
 
-    let log_path = paths::log_path();
+    let log_dir = paths::log_path().parent().unwrap().to_path_buf();
 
-    if !log_path.exists() {
+    let find_latest_log = || {
+        if !log_dir.exists() {
+            return None;
+        }
+        let entries = std::fs::read_dir(&log_dir).ok()?;
+        let mut logs: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("backutil.log"))
+            .collect();
+        logs.sort_by_key(|e| e.file_name());
+        logs.last().map(|e| e.path())
+    };
+
+    let mut log_path = find_latest_log();
+
+    if log_path.is_none() {
         if !follow {
-            println!("Log file {:?} does not exist.", log_path);
+            println!("No log files found in {:?}", log_dir);
             return Ok(());
         }
-        println!("Waiting for log file {:?} to be created...", log_path);
-        while !log_path.exists() {
+        println!("Waiting for log file in {:?} to be created...", log_dir);
+        while log_path.is_none() {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            log_path = find_latest_log();
         }
     }
+
+    let log_path = log_path.unwrap();
 
     let mut file = tokio::fs::File::open(&log_path).await?;
     let mut pos = 0u64;

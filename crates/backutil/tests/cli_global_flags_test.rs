@@ -64,10 +64,11 @@ target = "/tmp/repo"
 #[test]
 fn test_cli_json_check_config_only() {
     let temp = tempdir().unwrap();
-    let config_path = temp.path().join("config.toml");
-    let password_path = temp.path().join(".repo_password");
+    let config_dir = temp.path().join("backutil");
+    fs::create_dir_all(&config_dir).unwrap();
+    let config_path = config_dir.join("config.toml");
+    let password_path = config_dir.join(".repo_password");
 
-    fs::create_dir_all(config_path.parent().unwrap()).unwrap();
     fs::write(
         &config_path,
         r#"
@@ -85,6 +86,7 @@ target = "/tmp/repo"
 
     let mut cmd = Command::new(assert_cmd::cargo_bin!("backutil"));
     cmd.env("BACKUTIL_CONFIG", &config_path)
+        .env("XDG_CONFIG_HOME", temp.path())
         .arg("--json")
         .arg("check")
         .arg("--config-only");

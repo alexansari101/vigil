@@ -9,7 +9,10 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use backutil_daemon::manager::JobManager;
 use backutil_daemon::watcher::{FileWatcher, WatcherEvent};
@@ -19,22 +22,21 @@ struct Daemon {
     pid_path: PathBuf,
     socket_path: PathBuf,
     config: Config,
-    shutdown_tx: broadcast::Sender<()>,
+    shutdown_token: CancellationToken,
     job_manager: Arc<JobManager>,
 }
 
 impl Daemon {
-    fn new() -> Result<Self> {
+    fn new(shutdown_token: CancellationToken) -> Result<Self> {
         let pid_path = paths::pid_path();
         let socket_path = paths::socket_path();
         let config = load_config().context("Failed to load configuration")?;
-        let (shutdown_tx, _) = broadcast::channel(1);
-        let job_manager = Arc::new(JobManager::new(&config));
+        let job_manager = Arc::new(JobManager::new(&config, shutdown_token.clone()));
         Ok(Self {
             pid_path,
             socket_path,
             config,
-            shutdown_tx,
+            shutdown_token,
             job_manager,
         })
     }
@@ -121,18 +123,17 @@ impl Daemon {
 
         let mut sigterm = signal(SignalKind::terminate())?;
         let mut sigint = signal(SignalKind::interrupt())?;
-        let mut shutdown_rx = self.shutdown_tx.subscribe();
 
         loop {
             tokio::select! {
                 accept_res = listener.accept() => {
                     match accept_res {
                         Ok((stream, _)) => {
-                            let shutdown_tx = self.shutdown_tx.clone();
+                            let shutdown_token = self.shutdown_token.clone();
                             let reload_tx = reload_tx.clone();
                             let job_manager = self.job_manager.clone();
                             tokio::spawn(async move {
-                                if let Err(e) = handle_client(stream, shutdown_tx, reload_tx, job_manager).await {
+                                if let Err(e) = handle_client(stream, shutdown_token, reload_tx, job_manager).await {
                                     error!("Error handling client: {}", e);
                                 }
                             });
@@ -144,10 +145,12 @@ impl Daemon {
                 }
                 _ = sigterm.recv() => {
                     info!("Received SIGTERM, shutting down...");
+                    self.shutdown_token.cancel();
                     break;
                 }
                 _ = sigint.recv() => {
                     info!("Received SIGINT, shutting down...");
+                    self.shutdown_token.cancel();
                     break;
                 }
                 res = watcher_rx.recv() => {
@@ -186,9 +189,9 @@ impl Daemon {
                         }
                     }
                 }
-                _ = shutdown_rx.recv() => {
-                    info!("Received shutdown request via IPC, shutting down...");
-                    break;
+                _ = self.shutdown_token.cancelled() => {
+                   info!("Shutdown requested via IPC, shutting down...");
+                   break;
                 }
             }
         }
@@ -204,7 +207,7 @@ impl Daemon {
 
 async fn handle_client(
     mut stream: UnixStream,
-    shutdown_tx: broadcast::Sender<()>,
+    shutdown_token: CancellationToken,
     reload_tx: tokio::sync::mpsc::Sender<()>,
     job_manager: Arc<JobManager>,
 ) -> Result<()> {
@@ -246,8 +249,8 @@ async fn handle_client(
                     }
                     Request::Shutdown => {
                         info!("Shutdown requested via IPC");
-                        // Send shutdown signal before responding
-                        let _ = shutdown_tx.send(());
+                        // Trigger shutdown
+                        shutdown_token.cancel();
                         Response::Ok(None)
                     }
                     Request::Backup { set_name } => {
@@ -350,12 +353,43 @@ async fn handle_client(
     Ok(())
 }
 
+fn init_logging() -> WorkerGuard {
+    let log_path_full = paths::log_path();
+    let log_dir = log_path_full
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    // tracing_appender::rolling::daily will create files like "backutil.log.YYYY-MM-DD" inside log_dir
+    let file_appender = tracing_appender::rolling::daily(log_dir, "backutil.log");
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    let file_layer = fmt::layer().with_writer(non_blocking).with_ansi(false);
+
+    let stdout_layer = if std::env::var("BACKUTIL_LOG_STDOUT").is_ok() {
+        Some(fmt::layer().with_writer(std::io::stdout))
+    } else {
+        None
+    };
+
+    let filter = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap();
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(file_layer)
+        .with(stdout_layer)
+        .init();
+
+    guard
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
-    tracing_subscriber::fmt::init();
+    // Initialize logging with rotation
+    let _guard = init_logging();
 
-    let daemon = Daemon::new()?;
+    let shutdown_token = CancellationToken::new();
+    let daemon = Daemon::new(shutdown_token)?;
 
     let res = daemon.run().await;
 
@@ -374,8 +408,7 @@ mod tests {
         let tmp = tempdir()?;
         let pid_path = tmp.path().join("backutil.pid");
         let socket_path = tmp.path().join("backutil.sock");
-
-        let (shutdown_tx, _) = broadcast::channel(1);
+        let shutdown_token = CancellationToken::new();
 
         let daemon = Daemon {
             pid_path: pid_path.clone(),
@@ -384,11 +417,14 @@ mod tests {
                 global: Default::default(),
                 backup_sets: vec![],
             },
-            shutdown_tx,
-            job_manager: Arc::new(JobManager::new(&Config {
-                global: Default::default(),
-                backup_sets: vec![],
-            })),
+            shutdown_token: shutdown_token.clone(),
+            job_manager: Arc::new(JobManager::new(
+                &Config {
+                    global: Default::default(),
+                    backup_sets: vec![],
+                },
+                shutdown_token,
+            )),
         };
 
         daemon.create_pid_file()?;

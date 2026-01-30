@@ -17,8 +17,6 @@
 
 ---
 
----
-
 ## Phase 1: Foundation
 
 *All Phase 1 tasks completed.*
@@ -33,7 +31,7 @@
 
 ## Phase 3: CLI
 
----
+*All Phase 3 tasks completed.*
 
 ---
 
@@ -110,22 +108,6 @@ Review all error paths. Ensure user-facing errors include what/why/how-to-fix pe
 
 ---
 
-### 27. [ ] Robust Logging and clean output
-
-Ensure daemon logs all significant events to a file with rotation. Ensure CLI output remains clean by preventing daemon logs from polluting the interactive terminal.
-
-**Acceptance criteria:**
-
-- All significant events logged (backup start/complete, state changes)
-- Logs written to `~/.local/share/backutil/backutil.log`
-- Logs rotated or size-limited to prevent unbounded growth
-- Daemon log lines (e.g., `INFO ...`) do not appear on stdout/stderr when running as a service or via CLI triggers
-- CLI output during `backup`, `status`, etc., contains only user-facing messages
-- Graceful shutdown cancels in-flight worker tasks (debounce/backup)
-- `[BLOCKED BY: #1-#25]`
-
----
-
 ### 28. [ ] Polish and final testing
 
 Performance audit, documentation review, and final integration checks.
@@ -168,21 +150,7 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ## Phase 6: CLI UX Polish
 
----
-
----
-
----
-
----
-
----
-
----
-
----
-
----
+*All Phase 6 tasks completed.*
 
 ---
 
@@ -221,3 +189,4 @@ Write user-facing README with installation, quick start, and configuration examp
 | 38 | Plain English help text | `c65fccd` | 2026-01-29 |
 | 39 | Global `--quiet` and `--json` flags | `abcc197` | 2026-01-29 |
 | 32 | Enhanced status output with storage metrics | `231cd49` | 2026-01-30 |
+| 27 | Robust Logging and clean output | `5a20702` | 2026-01-30 |

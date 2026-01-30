@@ -8,6 +8,40 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-30] — feature: robust logging and graceful shutdown
+
+ **What changed:**
+
+- Implemented file-based logging with daily rotation in the daemon using `tracing-appender`.
+- Updated daemon to suppress stdout logging by default, improving CLI output cleanliness.
+- Implemented graceful shutdown in `JobManager` and `ResticExecutor` using `CancellationToken`.
+- Ensure daemon kills in-flight `restic` processes on SIGTERM/SIGINT.
+- Updated `backutil logs` CLI command to find and display the latest rotated log file.
+- Resolved dependency version conflict for `time` crate to ensure compatibility with rustc 1.85.
+
+ **Why:**
+
+- Implements Task #27. Provides persistent, auto-rotating logs for better troubleshooting while keeping the interactive terminal clean. Ensures that stopping the daemon also stops any background backup activity, preventing orphaned processes.
+
+ **Files affected:**
+
+- crates/backutil-daemon/Cargo.toml (modified)
+- crates/backutil-daemon/src/main.rs (modified)
+- crates/backutil-daemon/src/manager.rs (modified)
+- crates/backutil-daemon/src/executor.rs (modified)
+- crates/backutil/src/main.rs (modified)
+- crates/backutil-daemon/tests/integration_test.rs (modified)
+- crates/backutil-daemon/tests/restic_test.rs (modified)
+
+ **Testing notes:**
+
+- Verified log rotation produces `backutil.log.YYYY-MM-DD` files.
+- Verified `backutil logs` follows and displays rotated logs.
+- Verified graceful shutdown kills background `restic` processes via manual SIGTERM and `ps`.
+- Verified `backutil uninstall --purge` removes all log artifacts.
+
+---
+
 ## [2026-01-30] — feature: enhanced status metrics
 
  **What changed:**

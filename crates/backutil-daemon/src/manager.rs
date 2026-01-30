@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::{Duration, Instant};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
 /// How long to wait for restic mount process to exit gracefully after fusermount3 -u
@@ -20,6 +21,8 @@ pub struct JobManager {
     global_retention: Mutex<Option<RetentionPolicy>>,
     /// Broadcast sender for async events (e.g. backup completion)
     event_tx: broadcast::Sender<Response>,
+    /// Token to signal shutdown
+    shutdown_token: CancellationToken,
 }
 
 struct Job {
@@ -35,7 +38,7 @@ struct Job {
 }
 
 impl JobManager {
-    pub fn new(config: &Config) -> Self {
+    pub fn new(config: &Config, shutdown_token: CancellationToken) -> Self {
         let mut jobs = HashMap::new();
         for set in &config.backup_sets {
             jobs.insert(
@@ -59,6 +62,7 @@ impl JobManager {
             executor: Arc::new(ResticExecutor::new()),
             global_retention: Mutex::new(config.global.retention.clone()),
             event_tx,
+            shutdown_token,
         }
     }
 
@@ -72,7 +76,9 @@ impl JobManager {
         let mut jobs = self.jobs.lock().await;
         for (name, job) in jobs.iter_mut() {
             debug!("Initializing status for backup set '{}'", name);
-            match self.executor.snapshots(&job.set.target, None).await {
+            // We pass None for token here as this is startup and we generally want it to complete
+            // unless shutdown happens *during* startup (less common, but could pass token if strict)
+            match self.executor.snapshots(&job.set.target, None, None).await {
                 Ok(snapshots) => {
                     job.snapshot_count = Some(snapshots.len());
                     if let Some(latest) = snapshots.first() {
@@ -179,9 +185,17 @@ impl JobManager {
                     let executor_clone = self.executor.clone();
                     let set_name_owned = set_name.to_string();
                     let event_tx = self.event_tx.clone();
+                    let shutdown_token = self.shutdown_token.clone();
+
                     tokio::spawn(async move {
-                        Self::job_worker(jobs_clone, executor_clone, set_name_owned, event_tx)
-                            .await;
+                        Self::job_worker(
+                            jobs_clone,
+                            executor_clone,
+                            set_name_owned,
+                            event_tx,
+                            shutdown_token,
+                        )
+                        .await;
                     });
                 }
                 JobState::Debouncing { .. } => {
@@ -224,10 +238,17 @@ impl JobManager {
                     let executor_clone = self.executor.clone();
                     let set_name_owned = set_name.to_string();
                     let event_tx = self.event_tx.clone();
+                    let shutdown_token = self.shutdown_token.clone();
 
                     tokio::spawn(async move {
-                        Self::job_worker(jobs_clone, executor_clone, set_name_owned, event_tx)
-                            .await;
+                        Self::job_worker(
+                            jobs_clone,
+                            executor_clone,
+                            set_name_owned,
+                            event_tx,
+                            shutdown_token,
+                        )
+                        .await;
                     });
                 }
             }
@@ -242,8 +263,15 @@ impl JobManager {
         executor: Arc<ResticExecutor>,
         set_name: String,
         event_tx: broadcast::Sender<Response>,
+        shutdown_token: CancellationToken,
     ) {
         loop {
+            // Check for shutdown at start of loop
+            if shutdown_token.is_cancelled() {
+                info!("Detailed shutdown check: stopping worker for {}", set_name);
+                break;
+            }
+
             // Debouncing phase: wait for timer to stabilize
             let debounce_duration;
             let mut start_time;
@@ -267,6 +295,11 @@ impl JobManager {
 
             // Poll every 500ms to update remaining time and check for expiration
             loop {
+                // Check shutdown
+                if shutdown_token.is_cancelled() {
+                    return;
+                }
+
                 let mut jobs_lock = jobs.lock().await;
                 if let Some(job) = jobs_lock.get_mut(&set_name) {
                     if matches!(job.state, JobState::Running) {
@@ -313,7 +346,13 @@ impl JobManager {
                     return; // Job removed
                 }
                 drop(jobs_lock);
-                tokio::time::sleep(Duration::from_millis(500)).await;
+
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(500)) => {}
+                    _ = shutdown_token.cancelled() => {
+                        return;
+                    }
+                }
             }
 
             // Running phase
@@ -326,7 +365,10 @@ impl JobManager {
                     // Job was removed during execution
                     return;
                 };
-                executor.backup(&job.set).await
+                // Pass shutdown token to executor so it can kill the process if shutdown occurs
+                executor
+                    .backup(&job.set, Some(shutdown_token.clone()))
+                    .await
             };
 
             match result {
@@ -350,14 +392,18 @@ impl JobManager {
                                     .clone()
                                     .unwrap_or_else(|| "Unknown error".to_string());
                                 error!("Backup failed for set {}: {}", set_name, err_msg);
-                                let _ = notify_rust::Notification::new()
-                                    .summary("Backup Failed")
-                                    .body(&format!(
-                                        "Backup for set '{}' failed: {}",
-                                        set_name, err_msg
-                                    ))
-                                    .icon("dialog-error")
-                                    .show();
+
+                                // Only notify if not cancelled due to shutdown
+                                if !shutdown_token.is_cancelled() {
+                                    let _ = notify_rust::Notification::new()
+                                        .summary("Backup Failed")
+                                        .body(&format!(
+                                            "Backup for set '{}' failed: {}",
+                                            set_name, err_msg
+                                        ))
+                                        .icon("dialog-error")
+                                        .show();
+                                }
 
                                 // Broadcast failure event
                                 let _ =
@@ -401,9 +447,16 @@ impl JobManager {
                         let jobs = jobs.clone();
                         let executor = executor.clone();
                         let set_name = set_name.clone();
+                        let token = shutdown_token.clone();
 
                         tokio::spawn(async move {
-                            let snapshots_count_res = executor.snapshots(&target, None).await;
+                            // Metrics calculation is low priority, can just stop if shutdown
+                            if token.is_cancelled() {
+                                return;
+                            }
+
+                            let snapshots_count_res =
+                                executor.snapshots(&target, None, Some(token.clone())).await;
                             let size_res =
                                 Self::calculate_dir_size(std::path::Path::new(&target)).await;
 
@@ -430,14 +483,16 @@ impl JobManager {
                         }
                     }
 
-                    let _ = notify_rust::Notification::new()
-                        .summary("Backup Failed")
-                        .body(&format!(
-                            "Internal error backing up set '{}': {}",
-                            set_name, err_msg
-                        ))
-                        .icon("dialog-error")
-                        .show();
+                    if !shutdown_token.is_cancelled() {
+                        let _ = notify_rust::Notification::new()
+                            .summary("Backup Failed")
+                            .body(&format!(
+                                "Internal error backing up set '{}': {}",
+                                set_name, err_msg
+                            ))
+                            .icon("dialog-error")
+                            .show();
+                    }
 
                     // Broadcast failure event
                     let _ = event_tx.send(Response::Ok(Some(ResponseData::BackupFailed {
@@ -520,7 +575,12 @@ impl JobManager {
     ) -> Result<Vec<SnapshotInfo>> {
         let jobs = self.jobs.lock().await;
         if let Some(job) = jobs.get(set_name) {
-            self.executor.snapshots(&job.set.target, limit).await
+            // Snapshots query typically redundant to be cancelled by shutdown?
+            // We can pass token if we want strict shutdown, but for now user-initiated reads are probably fine to finish or fail on pipe close.
+            // Let's pass the token to be consistent.
+            self.executor
+                .snapshots(&job.set.target, limit, Some(self.shutdown_token.clone()))
+                .await
         } else {
             anyhow::bail!("Unknown backup set: {}", set_name)
         }
@@ -591,7 +651,11 @@ impl JobManager {
             };
 
             info!("Pruning set {}", name);
-            let reclaimed = self.executor.prune(&effective_set).await?;
+            // Can pass shutdown token here to allow cancellation
+            let reclaimed = self
+                .executor
+                .prune(&effective_set, Some(self.shutdown_token.clone()))
+                .await?;
             info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
 
             // Refresh metrics after prune
@@ -599,8 +663,14 @@ impl JobManager {
             let jobs = self.jobs.clone();
             let executor = self.executor.clone();
             let refresh_name = name.clone();
+            let token = self.shutdown_token.clone();
+
             tokio::spawn(async move {
-                let snapshots_count_res = executor.snapshots(&target, None).await;
+                if token.is_cancelled() {
+                    return;
+                }
+                let snapshots_count_res =
+                    executor.snapshots(&target, None, Some(token.clone())).await;
                 let size_res = JobManager::calculate_dir_size(std::path::Path::new(&target)).await;
 
                 if let Some(job) = jobs.lock().await.get_mut(&refresh_name) {
@@ -635,7 +705,15 @@ impl JobManager {
             let mut targets_to_refresh = Vec::new();
 
             for (name, effective_set) in &sets_to_prune {
-                match self.executor.prune(effective_set).await {
+                // Check shutdown before starting next prune
+                if self.shutdown_token.is_cancelled() {
+                    break;
+                }
+                match self
+                    .executor
+                    .prune(effective_set, Some(self.shutdown_token.clone()))
+                    .await
+                {
                     Ok(reclaimed) => {
                         info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
                         succeeded.push((name.clone(), reclaimed));
@@ -652,8 +730,13 @@ impl JobManager {
             for (name, target) in targets_to_refresh {
                 let jobs = self.jobs.clone();
                 let executor = self.executor.clone();
+                let token = self.shutdown_token.clone();
                 tokio::spawn(async move {
-                    let snapshots_count_res = executor.snapshots(&target, None).await;
+                    if token.is_cancelled() {
+                        return;
+                    }
+                    let snapshots_count_res =
+                        executor.snapshots(&target, None, Some(token.clone())).await;
                     let size_res =
                         JobManager::calculate_dir_size(std::path::Path::new(&target)).await;
 
@@ -777,6 +860,7 @@ mod tests {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use tempfile::tempdir;
+    use tokio_util::sync::CancellationToken;
 
     /// Tests the debounce state machine with real restic integration.
     ///
@@ -827,7 +911,7 @@ mod tests {
             }],
         };
 
-        let manager = JobManager::new(&config);
+        let manager = JobManager::new(&config, CancellationToken::new());
 
         // Helper to get state for "test" set
         let get_test_state = || async {
@@ -906,7 +990,7 @@ mod tests {
             }],
         };
 
-        let manager = JobManager::new(&config);
+        let manager = JobManager::new(&config, CancellationToken::new());
 
         let get_test_state = || async {
             manager
@@ -986,7 +1070,7 @@ mod tests {
         };
 
         // 1. Create a backup first
-        let manager = JobManager::new(&config);
+        let manager = JobManager::new(&config, CancellationToken::new());
         manager.trigger_backup("test").await?;
         tokio::time::sleep(Duration::from_millis(2000)).await;
 
@@ -995,7 +1079,7 @@ mod tests {
         assert!(!original_snapshot_id.is_empty());
 
         // 2. Create a new manager (simulating daemon restart)
-        let manager2 = JobManager::new(&config);
+        let manager2 = JobManager::new(&config, CancellationToken::new());
         // Initially last_backup should be None
         assert!(manager2.get_status().await[0].last_backup.is_none());
 

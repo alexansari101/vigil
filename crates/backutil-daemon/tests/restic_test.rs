@@ -54,17 +54,17 @@ async fn test_restic_workflow_integration() -> Result<()> {
         retention: None,
     };
 
-    let result = executor.backup(&set).await?;
+    let result = executor.backup(&set, None).await?;
     assert!(result.success, "Backup failed: {:?}", result.error_message);
     assert!(!result.snapshot_id.is_empty());
     assert!(result.added_bytes > 0);
 
     // 3. Snapshots
     let snapshots = executor
-        .snapshots(repo_path.to_str().unwrap(), None)
+        .snapshots(repo_path.to_str().unwrap(), None, None)
         .await?;
     assert_eq!(snapshots.len(), 1);
-    assert_eq!(snapshots[0].id, result.snapshot_id);
+    assert_eq!(snapshots[0].short_id, result.snapshot_id);
     assert!(snapshots[0]
         .paths
         .iter()
@@ -76,19 +76,19 @@ async fn test_restic_workflow_integration() -> Result<()> {
         keep_last: Some(1),
         ..Default::default()
     });
-    let reclaimed = executor.prune(&set_with_retention).await?;
+    let reclaimed = executor.prune(&set_with_retention, None).await?;
     // Note: reclaimed is u64, always >= 0. Just verify prune succeeded.
     let _ = reclaimed;
 
     // Snapshots should still be 1
     let snapshots = executor
-        .snapshots(repo_path.to_str().unwrap(), None)
+        .snapshots(repo_path.to_str().unwrap(), None, None)
         .await?;
     assert_eq!(snapshots.len(), 1);
 
     // 5. Password Validation: Trigger error with wrong password
     fs::write(&pw_file, "wrongpassword")?;
-    let bad_result = executor.backup(&set).await?;
+    let bad_result = executor.backup(&set, None).await?;
     assert!(!bad_result.success);
     assert!(
         bad_result

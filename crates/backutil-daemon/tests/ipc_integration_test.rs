@@ -350,6 +350,7 @@ retention = {{ keep_last = 1 }}
         .env("XDG_CONFIG_HOME", &config_dir)
         .env("XDG_DATA_HOME", &data_dir)
         .env("XDG_RUNTIME_DIR", &runtime_dir)
+        .env("BACKUTIL_CONFIG", &config_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;

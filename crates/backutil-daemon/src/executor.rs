@@ -46,22 +46,63 @@ impl ResticExecutor {
         Self
     }
 
-    async fn run_restic(&self, args: Vec<String>) -> Result<(String, String)> {
+    async fn run_restic(
+        &self,
+        args: Vec<String>,
+        token: Option<tokio_util::sync::CancellationToken>,
+    ) -> Result<(String, String)> {
         let mut cmd = Command::new("restic");
         cmd.args(&args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
         debug!("Running restic command: restic {}", args.join(" "));
-        let output = cmd.output().await.context("Failed to execute restic")?;
 
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        // We use spawn() so we can interact with the child process (kill it on cancellation)
+        let mut child = cmd.spawn().context("Failed to execute restic")?;
+        let stdout_pipe = child.stdout.take().context("Failed to take stdout")?;
+        let stderr_pipe = child.stderr.take().context("Failed to take stderr")?;
 
-        if !output.status.success() {
+        let stdout_handle = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            use tokio::io::AsyncReadExt;
+            let mut reader = stdout_pipe;
+            let _ = reader.read_to_end(&mut buf).await;
+            buf
+        });
+
+        let stderr_handle = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            use tokio::io::AsyncReadExt;
+            let mut reader = stderr_pipe;
+            let _ = reader.read_to_end(&mut buf).await;
+            buf
+        });
+
+        let status_res = if let Some(token) = token {
+            tokio::select! {
+                res = child.wait() => res,
+                _ = token.cancelled() => {
+                    info!("Restic command cancelled, killing process...");
+                    let _ = child.kill().await;
+                    return Err(anyhow!("Restic command cancelled"));
+                }
+            }
+        } else {
+            child.wait().await
+        };
+
+        let status = status_res.context("Failed to wait for restic process")?;
+        let stdout_bytes = stdout_handle.await.unwrap_or_default();
+        let stderr_bytes = stderr_handle.await.unwrap_or_default();
+
+        let stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
+        let stderr = String::from_utf8_lossy(&stderr_bytes).to_string();
+
+        if !status.success() {
             // Restic backup can return non-zero (3) for some warnings but still produce a snapshot
             if args.contains(&"backup".to_string()) && !stdout.is_empty() {
-                debug!("Restic backup returned non-zero ({}) but produced output, checking for summary", output.status);
+                debug!("Restic backup returned non-zero ({}) but produced output, checking for summary", status);
             } else {
                 error!("Restic failed: {}", stderr);
                 return Err(anyhow!("Restic error: {}", stderr));
@@ -74,18 +115,25 @@ impl ResticExecutor {
     pub async fn init(&self, target: &str) -> Result<()> {
         info!("Initializing restic repository at {}", target);
         let password_file = paths::password_path();
-        self.run_restic(vec![
-            "init".to_string(),
-            "--repo".to_string(),
-            target.to_string(),
-            "--password-file".to_string(),
-            password_file.to_string_lossy().to_string(),
-        ])
+        self.run_restic(
+            vec![
+                "init".to_string(),
+                "--repo".to_string(),
+                target.to_string(),
+                "--password-file".to_string(),
+                password_file.to_string_lossy().to_string(),
+            ],
+            None,
+        )
         .await?;
         Ok(())
     }
 
-    pub async fn backup(&self, set: &BackupSet) -> Result<BackupResult> {
+    pub async fn backup(
+        &self,
+        set: &BackupSet,
+        token: Option<tokio_util::sync::CancellationToken>,
+    ) -> Result<BackupResult> {
         info!("Starting backup for set: {}", set.name);
         let password_file = paths::password_path();
 
@@ -114,7 +162,7 @@ impl ResticExecutor {
             }
         }
 
-        let (stdout, _) = match self.run_restic(args).await {
+        let (stdout, _) = match self.run_restic(args, token).await {
             Ok(res) => res,
             Err(e) => {
                 return Ok(BackupResult {
@@ -157,7 +205,12 @@ impl ResticExecutor {
         })
     }
 
-    pub async fn snapshots(&self, target: &str, limit: Option<usize>) -> Result<Vec<SnapshotInfo>> {
+    pub async fn snapshots(
+        &self,
+        target: &str,
+        limit: Option<usize>,
+        token: Option<tokio_util::sync::CancellationToken>,
+    ) -> Result<Vec<SnapshotInfo>> {
         let password_file = paths::password_path();
         let mut args = vec![
             "snapshots".to_string(),
@@ -173,7 +226,7 @@ impl ResticExecutor {
             args.push(n.to_string());
         }
 
-        let (stdout, _) = self.run_restic(args).await?;
+        let (stdout, _) = self.run_restic(args, token).await?;
 
         let snapshots: Vec<ResticSnapshot> =
             serde_json::from_str(&stdout).context("Failed to parse restic snapshots JSON")?;
@@ -191,7 +244,11 @@ impl ResticExecutor {
             .collect())
     }
 
-    pub async fn prune(&self, set: &BackupSet) -> Result<u64> {
+    pub async fn prune(
+        &self,
+        set: &BackupSet,
+        token: Option<tokio_util::sync::CancellationToken>,
+    ) -> Result<u64> {
         info!("Pruning repository for set: {}", set.name);
         let password_file = paths::password_path();
 
@@ -239,7 +296,7 @@ impl ResticExecutor {
             args.push(monthly.to_string());
         }
 
-        let (stdout, _) = self.run_restic(args).await?;
+        let (stdout, _) = self.run_restic(args, token).await?;
 
         // Parse reclaimed bytes from text output.
         // Example: "total bytes reclaimed: 1.23 MiB" or "reclaimed 123 bytes"
