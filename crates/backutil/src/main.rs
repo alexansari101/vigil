@@ -563,7 +563,7 @@ async fn handle_unmount(set_name: Option<String>, json: bool, quiet: bool) -> an
 
 async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<()> {
     use std::io::Write;
-    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt};
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
     let log_dir = paths::log_path().parent().unwrap().to_path_buf();
 
@@ -571,6 +571,11 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
         if !log_dir.exists() {
             return None;
         }
+        let active_log = log_dir.join("backutil.log");
+        if active_log.exists() {
+            return Some(active_log);
+        }
+
         let entries = std::fs::read_dir(&log_dir).ok()?;
         let mut logs: Vec<_> = entries
             .filter_map(|e| e.ok())
@@ -597,30 +602,30 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
     let log_path = log_path.unwrap();
 
     let mut file = tokio::fs::File::open(&log_path).await?;
-    let mut pos = 0u64;
+    let mut pos;
 
-    // Initial tail: show last ~2KB or 20 lines if possible
+    // Initial tail: show last ~4KB
     let metadata = file.metadata().await?;
     let size = metadata.len();
-    if size > 2048 {
-        pos = size - 2048;
+    if size > 4096 {
+        pos = size - 4096;
+    } else {
+        pos = 0;
     }
 
     file.seek(std::io::SeekFrom::Start(pos)).await?;
-
-    // If we seeked mid-file, skip the first (likely partial) line
-    if pos > 0 {
-        let mut buf_reader = tokio::io::BufReader::new(&mut file);
-        let mut discard = String::new();
-        buf_reader.read_line(&mut discard).await?;
-    }
-
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).await?;
 
-    // Find last 20 lines in the buffer
     let content = String::from_utf8_lossy(&buffer);
-    let lines: Vec<&str> = content.lines().collect();
+    let mut lines: Vec<&str> = content.lines().collect();
+
+    // If we didn't start at the beginning, the first line is likely partial
+    if pos > 0 && !lines.is_empty() {
+        lines.remove(0);
+    }
+
+    // Show last 20 lines
     let start_idx = if lines.len() > 20 {
         lines.len() - 20
     } else {
@@ -638,7 +643,25 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
     pos = size;
     let mut current_log_path = log_path;
     loop {
-        let metadata = tokio::fs::metadata(&current_log_path).await?;
+        let metadata = match tokio::fs::metadata(&current_log_path).await {
+            Ok(m) => m,
+            Err(_) => {
+                // File might have been rotated/deleted, try to find latest again
+                if let Some(latest) = find_latest_log() {
+                    if latest != current_log_path {
+                        println!("--- Log shifted/rotated to {} ---", latest.display());
+                        std::io::stdout().flush()?;
+                        current_log_path = latest;
+                        file = tokio::fs::File::open(&current_log_path).await?;
+                        pos = 0;
+                        continue;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                continue;
+            }
+        };
+
         let current_size = metadata.len();
 
         if current_size < pos {
@@ -652,15 +675,23 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
         if current_size > pos {
             file.seek(std::io::SeekFrom::Start(pos)).await?;
             let mut new_content = Vec::new();
-            file.read_to_end(&mut new_content).await?;
-            print!("{}", String::from_utf8_lossy(&new_content));
-            std::io::stdout().flush()?;
-            pos = current_size;
+            match file.read_to_end(&mut new_content).await {
+                Ok(n) if n > 0 => {
+                    print!("{}", String::from_utf8_lossy(&new_content));
+                    std::io::stdout().flush()?;
+                    pos += n as u64;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Error reading log: {}", e);
+                    break;
+                }
+            }
         }
 
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        // Check for log rotation (e.g., new file after midnight)
+        // Check for log rotation
         if let Some(latest) = find_latest_log() {
             if latest != current_log_path {
                 println!("--- Log rotated to {} ---", latest.display());
@@ -671,6 +702,8 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
             }
         }
     }
+
+    Ok(())
 }
 
 async fn handle_bootstrap(json: bool, quiet: bool) -> anyhow::Result<()> {
@@ -1105,6 +1138,10 @@ async fn handle_check(
                     if !json {
                         println!("\r✗ {}: Repository check failed", set.name);
                         eprintln!("  Error: {}", stderr.trim());
+                        if stderr.contains("repository does not exist") {
+                            eprintln!("  Hint: You might need to initialize the repository first.");
+                            eprintln!("        Run `backutil init {}` to initialize it.", set.name);
+                        }
                     }
                     results.push(serde_json::json!({ "set": set.name, "accessible": false, "error": stderr.trim() }));
                     failed = true;

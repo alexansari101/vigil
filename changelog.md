@@ -8,6 +8,36 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-31] — bugfix: improve check error message and fix logs command output
+
+**What changed:**
+
+- Improved `backutil check` to provide a helpful hint to run `backutil init` when a repository is missing.
+- Fixed `backutil logs` to correctly identify `backutil.log` as the latest active log file.
+- Fixed a bug in `backutil logs` where `BufReader` was incorrectly consuming data, leading to empty output.
+- Enhanced `backutil logs` with more robust follow mode logic and better handling of rotated logs.
+- Added integration tests for both `check` and `logs` commands.
+
+**Why:**
+
+- Resolves user testing feedback where `backutil check` was confusing for new users and `backutil logs` failed to show content.
+- Improves CLI usability and troubleshooting experience.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+- crates/backutil/tests/cli_check_test.rs (modified)
+- crates/backutil/tests/cli_logs_test.rs (new)
+
+**Testing notes:**
+
+- Verified `backutil check` shows the new hint when a repository is deleted.
+- Verified `backutil logs` correctly displays existing log entries.
+- Verified `backutil logs -f` correctly follows new entries appended to the log file.
+- All automated tests passed, including new integration tests.
+
+---
+
 ## [2026-01-31] — bugfix: fix status update and file watcher issues
 
 **What changed:**

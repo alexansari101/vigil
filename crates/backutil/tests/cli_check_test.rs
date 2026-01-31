@@ -131,5 +131,8 @@ target = "/tmp/nonexistent_repo"
     assert_eq!(output.status.code(), Some(4));
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stdout.contains("✗ nonexistent: Repository check failed"));
+    assert!(stderr.contains("Hint: You might need to initialize the repository first."));
+    assert!(stderr.contains("Run `backutil init nonexistent` to initialize it."));
 }
