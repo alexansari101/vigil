@@ -84,39 +84,33 @@ impl JobManager {
         }
     }
 
-    /// Refresh status for a specific backup set.
+    /// Refresh status for a specific backup set by querying restic and calculating repo size.
+    /// All I/O is performed outside the lock; results are applied under the lock.
     async fn refresh_set_status(&self, set_name: &str) {
-        let job_info = {
+        let target = {
             let jobs = self.jobs.lock().await;
-            jobs.get(set_name).map(|j| (j.set.clone(), j.is_mounted))
-        };
-
-        let Some((set, _is_mounted)) = job_info else {
-            return;
+            match jobs.get(set_name) {
+                Some(j) => j.set.target.clone(),
+                None => return,
+            }
         };
 
         debug!("Refreshing status for backup set '{}'", set_name);
 
+        // Query all snapshots in a single call (no limit) so we get both latest info and total count
         let snapshots_res = self
             .executor
-            .snapshots(&set.target, Some(1), Some(self.shutdown_token.clone()))
+            .snapshots(&target, None, Some(self.shutdown_token.clone()))
             .await;
 
-        let size_res = Self::calculate_dir_size(std::path::Path::new(&set.target)).await;
+        let size_res = Self::calculate_dir_size(std::path::Path::new(&target)).await;
 
+        // Apply results under the lock
         let mut jobs = self.jobs.lock().await;
         if let Some(job) = jobs.get_mut(set_name) {
-            // Update snapshot info
             match snapshots_res {
                 Ok(snapshots) => {
-                    // We only requested limit 1, but we still need to know total count if possible.
-                    // Actually, if we want total count, we shouldn't limit to 1.
-                    // But for "last backup" info, limit 1 is fine.
-                    // Let's re-query without limit for the count if we want it to be accurate.
-                    // Or we can just use the provided snapshots vector if it's small.
-                    // Given we want to be efficient, let's query with limit 1 for details,
-                    // and maybe we need another way to get the count.
-                    // For now, let's just query all snapshots to keep it simple and accurate.
+                    job.snapshot_count = Some(snapshots.len());
                     if let Some(latest) = snapshots.first() {
                         job.last_backup = Some(BackupResult {
                             snapshot_id: latest.short_id.clone(),
@@ -128,17 +122,6 @@ impl JobManager {
                         });
                     } else {
                         job.last_backup = None;
-                    }
-
-                    // To get total count accurately, we need to query without limit.
-                    // Let's do that in a separate step or just query all here.
-                    // For simplicity, let's query all here.
-                    if let Ok(all_snapshots) = self
-                        .executor
-                        .snapshots(&set.target, None, Some(self.shutdown_token.clone()))
-                        .await
-                    {
-                        job.snapshot_count = Some(all_snapshots.len());
                     }
                 }
                 Err(e) => {
@@ -154,7 +137,6 @@ impl JobManager {
                 }
             }
 
-            // Update size info
             match size_res {
                 Ok(size_opt) => job.total_bytes = size_opt,
                 Err(e) => warn!("Failed to calculate repo size for '{}': {}", set_name, e),
@@ -189,7 +171,7 @@ impl JobManager {
             // 2. Add or update remaining sets
             for set in &config.backup_sets {
                 if let Some(job) = jobs.get_mut(&set.name) {
-                    // If target changed, clear metrics
+                    // If target changed, clear stale metrics immediately
                     if job.set.target != set.target {
                         debug!(
                             "Target for set '{}' changed from {} to {}, resetting status",
@@ -198,7 +180,6 @@ impl JobManager {
                         job.last_backup = None;
                         job.snapshot_count = None;
                         job.total_bytes = None;
-                        sets_to_refresh.push(set.name.clone());
                     }
                     // Update existing job config
                     debug!("Updating config for backup set '{}'", set.name);
@@ -221,7 +202,8 @@ impl JobManager {
                         },
                     );
                 }
-                // Always refresh status on config sync to catch external changes (like purge or manual repo deletion)
+                // Always refresh status on config sync to catch external changes
+                // (e.g., purge, manual repo deletion, target change)
                 sets_to_refresh.push(set.name.clone());
             }
 

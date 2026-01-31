@@ -36,6 +36,33 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-30] — fix: make daemon config reload more robust and add reload CLI command
+
+ **What changed:**
+
+- Made config reload async with retry logic (3 attempts with 2s delay) to handle partial file writes during atomic saves.
+- Added 200ms initial delay before reading config to avoid partial-file reads.
+- Added `backutil reload` CLI subcommand to manually trigger daemon config reload.
+- Separated config loading (async, off main loop) from config application (on main loop) via a channel.
+
+ **Why:**
+
+- Config file watching events can fire mid-write, causing parse failures. Retry with backoff handles this gracefully.
+- The `backutil reload` CLI command gives users explicit control over config reloading without restarting the daemon.
+
+ **Files affected:**
+
+- crates/backutil-daemon/src/main.rs (modified)
+- crates/backutil/src/main.rs (modified)
+
+ **Testing notes:**
+
+- Verified all workspace tests pass.
+
+---
+
+## [2026-01-30] — build: resolve rustc version incompatibility for `time` dependency
+
  **What changed:**
 
 - Pinned `time` dependency to `>=0.3.36, <0.3.37` and `time-core` to `>=0.1.2, <0.1.3` in the workspace `Cargo.toml`.
