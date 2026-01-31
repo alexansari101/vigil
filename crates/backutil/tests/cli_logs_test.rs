@@ -63,6 +63,9 @@ fn test_logs_rotation_selection() {
     let rotated_log = data_dir.join("backutil.log.2026-01-29");
     fs::write(&rotated_log, "old log content\n").unwrap();
 
+    // Ensure distinct timestamps for tests on systems with low mtime resolution
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
     // Create the active log
     let active_log = data_dir.join("backutil.log");
     fs::write(&active_log, "active log content\n").unwrap();

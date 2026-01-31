@@ -8,6 +8,28 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-30] 0292cf4 — cli: fix log selection to use modification time
+
+**What changed:**
+
+- Changed `find_latest_log` logic to sort all files starting with `backutil.log` by their modification time.
+- Removed early exit that prioritized `backutil.log`.
+- Added a small delay in `cli_logs_test.rs` to ensure distinct timestamps for modification time sorting across different filesystem resolutions.
+
+**Why:**
+
+- The previous implementation used lexicographical sorting and prioritized `backutil.log` if it existed, which caused stale logs to be shown even when newer dated logs were present.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+- crates/backutil/tests/cli_logs_test.rs (modified)
+
+**Testing notes:**
+
+- Verified with `cargo test`.
+- Verified manually by creating stale `backutil.log` and fresh dated logs.
+
 ## [2026-01-30] 81e8a4d — cli: fix --quiet flag in logs command and changelog format
 
 **What changed:**

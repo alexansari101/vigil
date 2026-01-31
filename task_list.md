@@ -9,7 +9,7 @@
 5. **Update changelog.md:** Add entry describing your changes
 6. **Update this file:** Remove the task from the list and add it to the completed tasks at the bottom of the list. Match the format of other completed tasks.
 7. **Merge to main:** Only after all tests pass and regression testing is complete and the pre-commit checklist has been completed per `developer_guidelines.md` Section 8.
-8. **Amend the commit** Update the "completed tasks" section of this file with the short commit id of the final merge commit.
+8. **Amend the commit** Update the "completed tasks" section of this file with the short commit id of parent commit.
 
 **Parallel work:** Multiple agents may work simultaneously on unblocked tasks. Communicate via changelog.md and commit messages. If you encounter a merge conflict, resolve it carefully and re-run all tests.
 
@@ -196,3 +196,4 @@ Write user-facing README with installation, quick start, and configuration examp
 | 42 | Fix flaky daemon manager tests caused by shared env vars | `f84afbc` | 2026-01-30 |
 | 43 | Fix status update and file watcher issues | `265ebea` | 2026-01-31 |
 | 44 | Address user testing feedback: check error hints and logs output | `8e90c6a` | 2026-01-31 |
+| 45 | Fix log selection logic to prefer most recent file by mtime | `0292cf4` | 2026-01-30 |

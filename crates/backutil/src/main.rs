@@ -571,17 +571,18 @@ async fn handle_logs(follow: bool, _json: bool, quiet: bool) -> anyhow::Result<(
         if !log_dir.exists() {
             return None;
         }
-        let active_log = log_dir.join("backutil.log");
-        if active_log.exists() {
-            return Some(active_log);
-        }
 
         let entries = std::fs::read_dir(&log_dir).ok()?;
         let mut logs: Vec<_> = entries
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_name().to_string_lossy().starts_with("backutil.log"))
+            .filter(|e| {
+                let name = e.file_name();
+                let name_str = name.to_string_lossy();
+                name_str == "backutil.log" || name_str.starts_with("backutil.log.")
+            })
             .collect();
-        logs.sort_by_key(|e| e.file_name());
+
+        logs.sort_by_key(|e| e.metadata().and_then(|m| m.modified()).ok());
         logs.last().map(|e| e.path())
     };
 
