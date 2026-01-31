@@ -110,6 +110,9 @@ impl JobManager {
             .await;
 
         let size_res = Self::calculate_dir_size(std::path::Path::new(&target)).await;
+        let is_mounted_res = backutil_lib::paths::is_mount_point(std::path::Path::new(
+            &backutil_lib::paths::mount_path(set_name),
+        ));
 
         // Apply results under the lock
         let mut jobs = self.jobs.lock().await;
@@ -155,6 +158,21 @@ impl JobManager {
             match size_res {
                 Ok(size_opt) => job.total_bytes = size_opt,
                 Err(e) => warn!("Failed to calculate repo size for '{}': {}", set_name, e),
+            }
+
+            // Update mount status from filesystem
+            if is_mounted_res {
+                if !job.is_mounted {
+                    info!(
+                        "Detected existing mount for set '{}', updating state",
+                        set_name
+                    );
+                    job.is_mounted = true;
+                }
+            } else if job.is_mounted && job.mount_process.is_none() {
+                // If we thought it was mounted but there's no process and no actual mount, clear it
+                debug!("Set '{}' reported as mounted but no mount detected on filesystem, clearing state", set_name);
+                job.is_mounted = false;
             }
         }
     }
@@ -598,8 +616,19 @@ impl JobManager {
                                 "Mount process for set {} exited unexpectedly with status: {}",
                                 job.set.name, status
                             );
-                            job.is_mounted = false;
                             job.mount_process = None;
+
+                            // Check if it's still mounted despite the process exiting
+                            if !backutil_lib::paths::is_mount_point(
+                                &backutil_lib::paths::mount_path(&job.set.name),
+                            ) {
+                                job.is_mounted = false;
+                            } else {
+                                info!(
+                                    "Mount for set {} still active after process exit (orphaned mount)",
+                                    job.set.name
+                                );
+                            }
                         }
                         Ok(None) => {
                             // Still running

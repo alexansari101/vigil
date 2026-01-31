@@ -197,3 +197,4 @@ Write user-facing README with installation, quick start, and configuration examp
 | 43 | Fix status update and file watcher issues | `265ebea` | 2026-01-31 |
 | 44 | Address user testing feedback: check error hints and logs output | `8e90c6a` | 2026-01-31 |
 | 45 | Fix log selection logic to prefer most recent file by mtime | `0292cf4` | 2026-01-30 |
+| 46 | Sync mount status on daemon restart | `2e0f85d` | 2026-01-31 |

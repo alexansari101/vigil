@@ -90,6 +90,39 @@ pub fn mount_path(set_name: &str) -> PathBuf {
     mount_base_dir().join(set_name)
 }
 
+/// Checks if the given path is a current mount point by reading /proc/mounts.
+/// This is used to synchronize daemon state with the filesystem on restart.
+pub fn is_mount_point(path: &std::path::Path) -> bool {
+    if !path.exists() {
+        return false;
+    }
+
+    let target = match path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+
+    let mounts = match std::fs::read_to_string("/proc/mounts") {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    for line in mounts.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 {
+            let mount_point = parts[1];
+            // Restic mounts appear as 'restic' or similar in /proc/mounts
+            if let Ok(p) = std::path::Path::new(mount_point).canonicalize() {
+                if p == target {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
 /// Returns the path to the systemd user unit: `~/.config/systemd/user/backutil-daemon.service`
 pub fn systemd_unit_path() -> PathBuf {
     let mut path = project_dirs()

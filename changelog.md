@@ -8,6 +8,29 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-31] 2e0f85d — daemon: sync mount status on restart
+
+**What changed:**
+
+- Added `is_mount_point` helper to `backutil-lib` to detect active FUSE mounts via `/proc/mounts`.
+- Updated `JobManager` to detect existing mounts during initialization and status refresh.
+- Improved orphaned mount handling in `get_status` monitoring.
+- Added unit tests for mount detection logic.
+
+**Why:**
+
+- Resolves a limitation where the daemon lost track of active mounts if it was restarted or crashed while a directory was still mounted.
+
+**Files affected:**
+
+- crates/backutil-lib/src/paths.rs (modified)
+- crates/backutil-daemon/src/manager.rs (modified)
+
+**Testing notes:**
+
+- Verified with unit tests in `backutil-lib`.
+- Verified daemon logic compiles and handles state correctly during refresh.
+
 ## [2026-01-30] 0292cf4 — cli: fix log selection to use modification time
 
 **What changed:**
