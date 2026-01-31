@@ -156,6 +156,57 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ---
 
+## Phase 7: UX Streamlining
+
+### 47. [ ] Command Grouping: `service` subcommand
+
+Group all service-related tasks under a `service` subcommand and rename for clarity.
+
+**Acceptance criteria:**
+
+- `bootstrap` -> `service install` (primary, but maybe keep hidden alias for migration if desired, though per review we should just rename).
+- `disable` -> `service stop`
+- `reload` -> `service reload`
+- `uninstall` -> `service uninstall [--purge]`
+- All help text and documentation updated to reflect new structure.
+- `[BLOCKED BY: #30]`
+
+### 48. [ ] Guided Onboarding: `backutil setup`
+
+Implement an interactive wizard for first-time configuration.
+
+**Acceptance criteria:**
+
+- Interactive prompts for name, source folder, and backup destination.
+- Prompts for global repository password and saves it to `.repo_password`.
+- Validates paths exist and are accessible.
+- Generates `config.toml` automatically.
+- Offers to run `init` and `service install` as final steps.
+- `[BLOCKED BY: #47]`
+
+### 49. [ ] Config Management: `track` and `untrack`
+
+Implement CLI commands to add/remove sets from the configuration file.
+
+**Acceptance criteria:**
+
+- `track <NAME> <SOURCE> <TARGET>`: Appends a new set to `config.toml`, then calls `init` and `service reload`.
+- `untrack <NAME> [--purge]`: Removes a set from `config.toml`, then calls `service reload`.
+- If `--purge`, also triggers `backutil purge <NAME>`.
+- `[BLOCKED BY: #48]`
+
+### 50. [ ] Improved `status` Offline Experience
+
+Make the `status` command useful even when the daemon is not running.
+
+**Acceptance criteria:**
+
+- If daemon is down, print `Service: Offline` and show a list of all configured sets from the local `config.toml`.
+- Provide an actionable hint: `Run backutil service install to start the service.`
+- `[BLOCKED BY: #47]`
+
+---
+
 ## Completed Tasks
 
 | # | Task | Commit | Completed |

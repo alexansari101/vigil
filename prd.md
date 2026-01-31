@@ -46,32 +46,43 @@ The goal is to transition to an automated, event-driven system that triggers enc
 
 * All sources, destinations, exclusion patterns, and retention policies must be defined in a single, human-readable config file (e.g., YAML or TOML). It must support a list of backup "jobs" or "sets."
 
-### FR5: Automated Bootstrapping & Installation
+### FR5: Automated Onboarding & Service Management
 
-* **Installer Script:** Provide a single-command installation or "bootstrap" script.
-* **Service Provisioning:** The script must automatically generate, install, and enable the necessary `systemd` user units based on the unified configuration.
-* **Dependency Check:** Verify and alert the user if required binaries (`restic`, `fusermount3`, `notify-send`) are missing from the new system.
-* **Uninstall/Disable:**
-  * `backutil disable` — Stop and disable systemd units without removing config.
-  * `backutil uninstall` — Stop units, remove systemd units, and optionally delete config/logs (`--purge` flag).
+* **Setup Wizard:** Provide a guided `backutil setup` command that creates the initial configuration and password file interactively.
+* **Track/Untrack:** Provide CLI commands to add (`track`) or remove (`untrack`) backup sets without manual configuration editing.
+* **Service Provisioning:** Group all service-related tasks under a `service` subcommand.
+* **Dependency Check:** Verify and alert the user if required binaries (`restic`, `fusermount3`, `notify-send`) are missing.
+* **Service Control:**
+  * `backutil service install` — Provision systemd units and start daemon.
+  * `backutil service stop` — Stop and disable systemd units without removing config.
+  * `backutil service reload` — Trigger daemon to reload configuration.
+  * `backutil service uninstall` — Stop and remove systemd units.
 
 ### FR5.1: CLI Subcommand Structure
 
-```
-backutil init         # Initialize a new Restic repository
-backutil backup [SET] # Run backup now (one set or all if omitted)
-backutil status       # Show health summary and recent snapshots
-backutil snapshots <SET> [--limit N]  # List available snapshots for a set
-backutil list         # List all configured backup sets
-backutil check [SET]  # Validate config and test repository access (works offline)
-backutil mount <SET>  # Mount a snapshot via FUSE (interactive snapshot picker)
-backutil unmount      # Unmount all active FUSE mounts
-backutil prune        # Trigger retention policy cleanup
-backutil tui          # Launch interactive dashboard
-backutil bootstrap    # Generate and enable systemd user units
-backutil disable      # Stop and disable systemd units
-backutil uninstall    # Remove systemd units; --purge to delete configs
-backutil logs         # Tail the log file
+```bash
+# Core Operations
+backutil setup                  # Guided first-time setup
+backutil track <NAME> <SRC> <TGT> # Add new backup set
+backutil untrack <NAME> [--purge] # Remove backup set
+backutil init [SET]               # Initialize Restic repository
+backutil backup [SET]             # Run backup now
+backutil status                   # Show health summary (works offline)
+backutil snapshots <SET>          # List snapshots
+backutil list                     # List configured sets
+backutil check [SET]              # Validate config/connectivity
+backutil mount <SET> [ID]         # Mount repository (navigates to ID if provided)
+backutil unmount [SET]            # Unmount active FUSE mounts
+backutil prune [SET]              # Trigger retention cleanup
+backutil purge <SET>              # Permanently delete repository data
+backutil logs [-f]                # Tail the log file
+backutil tui                      # Launch interactive dashboard
+
+# Service Management
+backutil service install          # Generate and enable systemd units
+backutil service stop             # Stop and disable systemd units
+backutil service reload           # Reload daemon configuration
+backutil service uninstall [--purge] # Remove systemd units; --purge deletes configs
 ```
 
 ### FR5.2: CLI Output Quality

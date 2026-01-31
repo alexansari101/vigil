@@ -119,7 +119,7 @@ Communication between CLI/TUI and daemon uses JSON over Unix socket. Each messag
 | `Shutdown` | none | Graceful daemon shutdown |
 | `Ping` | none | Health check |
 
-**Note:** The `purge` operation (deleting a backup set's repository) is handled entirely CLI-side. The CLI sends `Unmount` + `ReloadConfig` to the daemon, then deletes the repository directory directly. See `backutil purge` in Section 13.
+**Note:** The `purge` operation (deleting a backup set's repository) is handled entirely CLI-side. The CLI sends `Unmount` + `ReloadConfig` to the daemon, then deletes the repository directory directly. See `backutil purge` in Section 13. Similarly, `track` and `untrack` are CLI-side operations that modify `config.toml` and then call `ReloadConfig`.
 
 ### Response Types
 
@@ -340,63 +340,65 @@ All CLI commands should support these global flags:
 
 **Clean CLI Output:** Daemon log messages (e.g., `INFO backutil_daemon::manager: ...`) must not appear in CLI command output. CLI should only display user-facing messages.
 
-### New CLI Commands
+### Service Management Commands (`backutil service ...`)
+
+**`backutil service install`**
+
+Generates the systemd user unit, reloads the systemd daemon, and enables/starts the service. Equivalent to the old `bootstrap` command.
+
+**`backutil service stop`**
+
+Stops and disables the systemd user unit. Equivalent to the old `disable` command.
+
+**`backutil service reload`**
+
+Triggers the daemon to reload its configuration from disk. Requires daemon to be running. Equivalent to `backutil reload`.
+
+**`backutil service uninstall [--purge]`**
+
+Stops and removes the systemd user unit. If `--purge` is specified, also deletes the configuration and data directories. Equivalent to the old `uninstall`.
+
+### Configuration & Lifecycle Commands
+
+**`backutil logs [-f]`**
+
+Tails the log file. `-f` for follow mode.
+
+**`backutil mount <SET> [ID]`**
+
+Mounts the Restic repository for the given backup set via FUSE.
+
+- **Restic limitation**: `restic mount` always mounts the entire repository structure (ids, snapshots, etc.).
+- If `ID` is provided, the CLI should print the full path to that specific snapshot within the mount point (e.g., `/mnt/backutil/set/ids/<ID>/`).
+- If `ID` is omitted, the CLI should offer an interactive selector to pick a snapshot, then print the path to that snapshot's folder.
+
+**`backutil track <NAME> <SOURCE> <TARGET>`**
+
+Adds a new backup set to `config.toml`, then automatically runs `backutil init <NAME>` and `backutil service reload`.
+
+**`backutil untrack <NAME> [--purge]`**
+
+Removes a backup set from `config.toml`, then calls `backutil service reload`. If `--purge` is used, also calls `backutil purge <NAME>`.
 
 **`backutil list`**
 
 Lists all configured backup sets. Does not require daemon to be running.
 
-```
-$ backutil list
-NAME            SOURCE                          TARGET
-personal        ~/personal_records              /mnt/backup/personal
-financial       ~/financial_docs                /mnt/backup/financial
-```
+**`backutil status`**
+
+Shows health summary and backup set status.
+
+- **Online Mode:** (Daemon running) Shows live state from daemon.
+- **Offline Mode:** (Daemon down) Displays "Service: Offline" and lists configured sets from `config.toml` with their source/target paths.
 
 **`backutil snapshots <SET> [--limit N]`**
 
 Lists available snapshots for a backup set. Requires daemon.
 
-```
-$ backutil snapshots personal --limit 5
-ID        DATE                 SIZE      PATHS
-5a08c7d4  2026-01-28 19:43     3.3 KiB   /tmp/backutil_test/source1
-e6ad2ad9  2026-01-28 19:40     1.9 KiB   /tmp/backutil_test/source1
-```
-
 **`backutil check [SET]`**
 
 Validates configuration and optionally tests repository access. Does not require daemon for config validation.
 
-```
-$ backutil check
-✓ Configuration valid: 2 backup sets defined
-✓ Password file exists and is readable
-✓ personal: Repository accessible
-✓ financial: Repository accessible
-
-$ backutil check --config-only
-✓ Configuration valid: 2 backup sets defined
-✓ Password file exists and is readable
-```
-
 **`backutil purge <SET> [--force]`**
 
-Permanently deletes a backup set's Restic repository and mount point. This is a CLI-side operation: it unmounts via daemon IPC, triggers a config reload, then deletes the repository directory and mount point directly from the filesystem. Does not use a dedicated IPC request.
-
-```
-$ backutil purge personal
-WARNING: This will permanently delete ALL backup data for 'personal' at '/mnt/backup/personal' and can NOT be undone!
-Source files will NOT be affected.
-Are you sure you want to proceed? [y/N]: y
-Successfully purged backup set 'personal'.
-```
-
-**`backutil reload`**
-
-Triggers the daemon to reload its configuration from disk. Requires daemon to be running.
-
-```
-$ backutil reload
-Successfully triggered configuration reload.
-```
+Permanently deletes a backup set's Restic repository and mount point. CLI-side operation.
