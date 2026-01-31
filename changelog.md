@@ -16,11 +16,14 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 - Fixed daemon to correctly use the global `debounce_seconds` configuration when no per-set override is provided.
 - Improved `refresh_set_status` to preserve live backup metrics (`added_bytes`, `duration_secs`) after successful backup runs.
 - Enhanced file watcher with better logging and robust path matching (including canonicalization).
+- Fixed critical regression: Moved Restic backup execution outside of the `JobManager` lock to prevent blocking IPC requests (e.g. `status` command) during backups.
+- Fixed critical regression: Added `worker_active` flag to `Job` state to prevent multiple background workers from being spawned for the same backup set.
 
 **Why:**
 
 - Resolves user testing feedback where `backutil status` was not updating the "last backup" time.
 - Resolves issues where `touch` or new file additions appeared to not trigger backups (due to incorrect 60s default debounce).
+- Fixes IPC responsiveness during long-running backups and prevents duplicate worker tasks.
 - Improves visibility and reliability of the backup process.
 
 **Files affected:**
@@ -43,8 +46,6 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 - Implemented `refresh_set_status` for individual backup set updates.
 - Added `refresh_related_sets` to synchronize status across sets sharing the same Restic repository.
 - Updated `sync_config` to always trigger a full background refresh of all sets on config reload.
-- **Fixed critical regression**: Moved Restic backup execution outside of the `JobManager` lock to prevent blocking IPC requests (e.g. `status` command) during backups.
-- **Fixed critical regression**: Added `worker_active` flag to `Job` state to prevent multiple background workers from being spawned for the same backup set.
 - Improved repo access error handling to clear stale metrics instead of preserving them.
 
  **Why:**

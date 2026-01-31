@@ -5,6 +5,7 @@ use backutil_lib::ipc::{Response, ResponseData};
 use backutil_lib::types::{BackupResult, JobState, SetStatus, SnapshotInfo};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::{Duration, Instant};
@@ -20,8 +21,8 @@ pub struct JobManager {
     executor: Arc<ResticExecutor>,
     /// Global retention policy for fallback when per-set retention is not specified.
     global_retention: Arc<Mutex<Option<RetentionPolicy>>>,
-    /// Global debounce delay for fallback.
-    global_debounce: Arc<Mutex<u64>>,
+    /// Global debounce delay in seconds for fallback (atomic to avoid nested locks).
+    global_debounce: Arc<AtomicU64>,
     /// Broadcast sender for async events (e.g. backup completion)
     event_tx: broadcast::Sender<Response>,
     /// Token to signal shutdown
@@ -66,7 +67,7 @@ impl JobManager {
             jobs: Arc::new(Mutex::new(jobs)),
             executor: Arc::new(ResticExecutor::new()),
             global_retention: Arc::new(Mutex::new(config.global.retention.clone())),
-            global_debounce: Arc::new(Mutex::new(config.global.debounce_seconds)),
+            global_debounce: Arc::new(AtomicU64::new(config.global.debounce_seconds)),
             event_tx,
             shutdown_token,
         }
@@ -225,8 +226,8 @@ impl JobManager {
             // 3. Update global settings
             let mut global_retention = self.global_retention.lock().await;
             *global_retention = config.global.retention.clone();
-            let mut global_debounce = self.global_debounce.lock().await;
-            *global_debounce = config.global.debounce_seconds;
+            self.global_debounce
+                .store(config.global.debounce_seconds, Ordering::Relaxed);
         }
 
         // Trigger background refresh for new/changed sets
@@ -269,7 +270,7 @@ impl JobManager {
                     let debounce_secs = job
                         .set
                         .debounce_seconds
-                        .unwrap_or(*self.global_debounce.lock().await);
+                        .unwrap_or(self.global_debounce.load(Ordering::Relaxed));
                     job.state = JobState::Debouncing {
                         remaining_secs: debounce_secs,
                     };
@@ -363,7 +364,7 @@ impl JobManager {
                         debounce_duration = Duration::from_secs(
                             job.set
                                 .debounce_seconds
-                                .unwrap_or(*manager.global_debounce.lock().await),
+                                .unwrap_or(manager.global_debounce.load(Ordering::Relaxed)),
                         );
                         start_time = job.last_change.unwrap_or_else(Instant::now);
                     }
@@ -439,17 +440,14 @@ impl JobManager {
             debug!("Starting backup execution for set {}", set_name);
 
             let result = {
-                let jobs_lock = jobs.lock().await;
-                let Some(job) = jobs_lock.get(&set_name) else {
-                    // Job was removed during execution
-                    let mut jobs_lock = jobs.lock().await;
-                    if let Some(job) = jobs_lock.get_mut(&set_name) {
-                        job.worker_active = false;
-                    }
-                    return;
-                };
-                let backup_set = job.set.clone();
-                drop(jobs_lock); // CRITICAL: Release lock before backup
+                let backup_set = {
+                    let jobs_lock = jobs.lock().await;
+                    let Some(job) = jobs_lock.get(&set_name) else {
+                        // Job was removed during execution, nothing to clean up
+                        return;
+                    };
+                    job.set.clone()
+                }; // CRITICAL: Release lock before backup
 
                 // Pass shutdown token to executor so it can kill the process if shutdown occurs
                 executor
@@ -510,7 +508,7 @@ impl JobManager {
                                     let debounce_secs = job
                                         .set
                                         .debounce_seconds
-                                        .unwrap_or(*manager.global_debounce.lock().await);
+                                        .unwrap_or(manager.global_debounce.load(Ordering::Relaxed));
                                     job.state = JobState::Debouncing {
                                         remaining_secs: debounce_secs,
                                     };
