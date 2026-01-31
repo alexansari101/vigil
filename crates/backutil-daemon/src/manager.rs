@@ -20,6 +20,8 @@ pub struct JobManager {
     executor: Arc<ResticExecutor>,
     /// Global retention policy for fallback when per-set retention is not specified.
     global_retention: Arc<Mutex<Option<RetentionPolicy>>>,
+    /// Global debounce delay for fallback.
+    global_debounce: Arc<Mutex<u64>>,
     /// Broadcast sender for async events (e.g. backup completion)
     event_tx: broadcast::Sender<Response>,
     /// Token to signal shutdown
@@ -36,6 +38,7 @@ struct Job {
     mount_process: Option<tokio::process::Child>,
     snapshot_count: Option<usize>,
     total_bytes: Option<u64>,
+    worker_active: bool,
 }
 
 impl JobManager {
@@ -54,6 +57,7 @@ impl JobManager {
                     mount_process: None,
                     snapshot_count: None,
                     total_bytes: None,
+                    worker_active: false,
                 },
             );
         }
@@ -62,6 +66,7 @@ impl JobManager {
             jobs: Arc::new(Mutex::new(jobs)),
             executor: Arc::new(ResticExecutor::new()),
             global_retention: Arc::new(Mutex::new(config.global.retention.clone())),
+            global_debounce: Arc::new(Mutex::new(config.global.debounce_seconds)),
             event_tx,
             shutdown_token,
         }
@@ -111,15 +116,24 @@ impl JobManager {
             match snapshots_res {
                 Ok(snapshots) => {
                     job.snapshot_count = Some(snapshots.len());
-                    if let Some(latest) = snapshots.first() {
-                        job.last_backup = Some(BackupResult {
+                    if let Some(latest) = snapshots.last() {
+                        let mut new_result = BackupResult {
                             snapshot_id: latest.short_id.clone(),
                             timestamp: latest.timestamp,
                             added_bytes: 0,
                             duration_secs: 0.0,
                             success: true,
                             error_message: None,
-                        });
+                        };
+
+                        // If this is the same snapshot as we already have, preserve the metrics
+                        if let Some(ref current) = job.last_backup {
+                            if current.snapshot_id == latest.short_id {
+                                new_result.added_bytes = current.added_bytes;
+                                new_result.duration_secs = current.duration_secs;
+                            }
+                        }
+                        job.last_backup = Some(new_result);
                     } else {
                         job.last_backup = None;
                     }
@@ -199,6 +213,7 @@ impl JobManager {
                             mount_process: None,
                             snapshot_count: None,
                             total_bytes: None,
+                            worker_active: false,
                         },
                     );
                 }
@@ -207,9 +222,11 @@ impl JobManager {
                 sets_to_refresh.push(set.name.clone());
             }
 
-            // 3. Update global retention
+            // 3. Update global settings
             let mut global_retention = self.global_retention.lock().await;
             *global_retention = config.global.retention.clone();
+            let mut global_debounce = self.global_debounce.lock().await;
+            *global_debounce = config.global.debounce_seconds;
         }
 
         // Trigger background refresh for new/changed sets
@@ -249,21 +266,22 @@ impl JobManager {
 
             match job.state {
                 JobState::Idle | JobState::Error => {
-                    let debounce_secs = job.set.debounce_seconds.unwrap_or(60);
+                    let debounce_secs = job
+                        .set
+                        .debounce_seconds
+                        .unwrap_or(*self.global_debounce.lock().await);
                     job.state = JobState::Debouncing {
                         remaining_secs: debounce_secs,
                     };
-                    info!(
-                        "Set {} entered Debouncing state ({}s)",
-                        set_name, debounce_secs
-                    );
+                    if !job.worker_active {
+                        job.worker_active = true;
+                        let manager = self.clone();
+                        let set_name_owned = set_name.to_string();
 
-                    let manager = self.clone();
-                    let set_name_owned = set_name.to_string();
-
-                    tokio::spawn(async move {
-                        Self::job_worker(manager, set_name_owned).await;
-                    });
+                        tokio::spawn(async move {
+                            Self::job_worker(manager, set_name_owned).await;
+                        });
+                    }
                 }
                 JobState::Debouncing { .. } => {
                     debug!("Set {} is already debouncing, timer reset", set_name);
@@ -298,15 +316,18 @@ impl JobManager {
                     );
                 }
                 JobState::Idle | JobState::Error => {
-                    job.state = JobState::Running; // Set to running immediately to prevent debounce start
+                    job.state = JobState::Running; // Set to running immediately
                     info!("Immediate backup triggered for set {}", set_name);
 
-                    let manager = self.clone();
-                    let set_name_owned = set_name.to_string();
+                    if !job.worker_active {
+                        job.worker_active = true;
+                        let manager = self.clone();
+                        let set_name_owned = set_name.to_string();
 
-                    tokio::spawn(async move {
-                        Self::job_worker(manager, set_name_owned).await;
-                    });
+                        tokio::spawn(async move {
+                            Self::job_worker(manager, set_name_owned).await;
+                        });
+                    }
                 }
             }
             Ok(())
@@ -339,8 +360,11 @@ impl JobManager {
                         debounce_duration = Duration::ZERO; // Skip loop effectively
                         start_time = Instant::now();
                     } else {
-                        debounce_duration =
-                            Duration::from_secs(job.set.debounce_seconds.unwrap_or(60));
+                        debounce_duration = Duration::from_secs(
+                            job.set
+                                .debounce_seconds
+                                .unwrap_or(*manager.global_debounce.lock().await),
+                        );
                         start_time = job.last_change.unwrap_or_else(Instant::now);
                     }
                 } else {
@@ -418,11 +442,18 @@ impl JobManager {
                 let jobs_lock = jobs.lock().await;
                 let Some(job) = jobs_lock.get(&set_name) else {
                     // Job was removed during execution
+                    let mut jobs_lock = jobs.lock().await;
+                    if let Some(job) = jobs_lock.get_mut(&set_name) {
+                        job.worker_active = false;
+                    }
                     return;
                 };
+                let backup_set = job.set.clone();
+                drop(jobs_lock); // CRITICAL: Release lock before backup
+
                 // Pass shutdown token to executor so it can kill the process if shutdown occurs
                 executor
-                    .backup(&job.set, Some(shutdown_token.clone()))
+                    .backup(&backup_set, Some(shutdown_token.clone()))
                     .await
             };
 
@@ -476,7 +507,10 @@ impl JobManager {
                                     "New changes detected for set {} during backup, re-debouncing",
                                     set_name
                                 );
-                                    let debounce_secs = job.set.debounce_seconds.unwrap_or(60);
+                                    let debounce_secs = job
+                                        .set
+                                        .debounce_seconds
+                                        .unwrap_or(*manager.global_debounce.lock().await);
                                     job.state = JobState::Debouncing {
                                         remaining_secs: debounce_secs,
                                     };
@@ -540,6 +574,11 @@ impl JobManager {
                     break;
                 }
             }
+        }
+        // Worker is exiting, clear the active flag
+        let mut jobs_lock = jobs.lock().await;
+        if let Some(job) = jobs_lock.get_mut(&set_name) {
+            job.worker_active = false;
         }
     }
 

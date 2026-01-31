@@ -103,16 +103,28 @@ fn handle_event(inner: &WatcherInner, event: Event) -> Result<()> {
     debug!("Event kind: {:?}, paths: {:?}", event.kind, event.paths);
 
     for path in event.paths {
+        // Use metadata to check if it's a directory, but don't fail if file is already gone (e.g. rapid delete/move)
         if path.is_dir() {
             debug!("Skipping directory: {:?}", path);
             continue;
         }
+
         debug!("Processing path: {:?}", path);
         let mut found_set = None;
+
+        // Try to match the path against our watched roots
         for (root, set_name) in &inner.path_to_set {
             if path.starts_with(root) {
                 found_set = Some((root, set_name));
                 break;
+            }
+
+            // Try absolute path if it's not already
+            if let Ok(abs_path) = std::fs::canonicalize(&path) {
+                if abs_path.starts_with(root) {
+                    found_set = Some((root, set_name));
+                    break;
+                }
             }
         }
 
@@ -136,11 +148,16 @@ fn handle_event(inner: &WatcherInner, event: Event) -> Result<()> {
                 }
             }
 
-            info!("File change detected in set {}: {:?}", set_name, path);
+            info!(
+                "File change detected in set {}: {:?} (event: {:?})",
+                set_name, path, event.kind
+            );
             let _ = inner.event_tx.try_send(WatcherEvent::FileChanged {
                 set_name: set_name.clone(),
                 path,
             });
+        } else {
+            debug!("Path not in any watched set: {:?}", path);
         }
     }
 

@@ -194,3 +194,4 @@ Write user-facing README with installation, quick start, and configuration examp
 | 27 | Robust Logging and clean output | `5a20702` | 2026-01-30 |
 | 41 | Fix test_cli_mount_unmount deterministic failure | `a4f4abc` | 2026-01-30 |
 | 42 | Fix flaky daemon manager tests caused by shared env vars | `f84afbc` | 2026-01-30 |
+| 43 | Fix status update and file watcher issues | `265ebea` | 2026-01-31 |

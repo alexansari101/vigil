@@ -8,6 +8,33 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-31] — bugfix: fix status update and file watcher issues
+
+**What changed:**
+
+- Fixed `backutil status` to correctly show the most recent snapshot as "last backup" (changed `first()` to `last()`).
+- Fixed daemon to correctly use the global `debounce_seconds` configuration when no per-set override is provided.
+- Improved `refresh_set_status` to preserve live backup metrics (`added_bytes`, `duration_secs`) after successful backup runs.
+- Enhanced file watcher with better logging and robust path matching (including canonicalization).
+
+**Why:**
+
+- Resolves user testing feedback where `backutil status` was not updating the "last backup" time.
+- Resolves issues where `touch` or new file additions appeared to not trigger backups (due to incorrect 60s default debounce).
+- Improves visibility and reliability of the backup process.
+
+**Files affected:**
+
+- crates/backutil-daemon/src/manager.rs (modified)
+- crates/backutil-daemon/src/watcher.rs (modified)
+
+**Testing notes:**
+
+- Verified with reproduction script `repro_issues.sh` covering status updates and file watcher triggers.
+- All workspace tests passed, including integration tests.
+
+---
+
 ## [2026-01-30] — bugfix: fix daemon state management (mirroring, stale status)
 
  **What changed:**
@@ -16,7 +43,8 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 - Implemented `refresh_set_status` for individual backup set updates.
 - Added `refresh_related_sets` to synchronize status across sets sharing the same Restic repository.
 - Updated `sync_config` to always trigger a full background refresh of all sets on config reload.
-- Refactored `job_worker` to accept `JobManager` directly for simplified refresh triggers.
+- **Fixed critical regression**: Moved Restic backup execution outside of the `JobManager` lock to prevent blocking IPC requests (e.g. `status` command) during backups.
+- **Fixed critical regression**: Added `worker_active` flag to `Job` state to prevent multiple background workers from being spawned for the same backup set.
 - Improved repo access error handling to clear stale metrics instead of preserving them.
 
  **Why:**
