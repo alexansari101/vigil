@@ -32,7 +32,8 @@ async fn test_bootstrap_unit_file_generation() {
         .join("backutil");
 
     let _output = Command::new(&bin_path)
-        .arg("bootstrap")
+        .arg("service")
+        .arg("install")
         .output()
         .expect("Failed to run backutil");
 
@@ -89,6 +90,7 @@ async fn test_uninstall_cleanups() {
         .join("backutil");
 
     let _output = Command::new(&bin_path)
+        .arg("service")
         .arg("uninstall")
         .arg("--purge")
         .output()

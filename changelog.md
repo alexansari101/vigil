@@ -8,6 +8,38 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-31] — cli: group service-related commands under `service` subcommand
+
+**What changed:**
+
+- Grouped `bootstrap`, `disable`, `reload`, and `uninstall` under a new `service` subcommand.
+- Renamed operations for clarity:
+  - `bootstrap` -> `service install`
+  - `disable` -> `service stop`
+  - `reload` -> `service reload`
+  - `uninstall` -> `service uninstall`
+- Updated all help text, PRD, and Spec documentation.
+- Updated integration tests to reflect the new command structure.
+
+**Why:**
+
+- Implements FR5 (Automated Onboarding & Service Management) and improves CLI organization per Phase 7 requirements.
+- Provides a more intuitive and structured CLI for managing the background service.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+- crates/backutil/tests/cli_systemd_test.rs (modified)
+- prd.md (modified)
+- spec.md (modified)
+
+**Testing notes:**
+
+- Verified with `cargo test --workspace` (regular tests).
+- Verified with `cargo test --workspace -- --ignored --test-threads=1` (restic-dependent tests).
+- Manually verified `--help` output for both top-level and service subcommands.
+- Confirmed compatibility with existing service management logic.
+
 ## [2026-01-31] — review: fix orphaned mount detection and add missing tests
 
 **What changed:**

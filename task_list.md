@@ -158,18 +158,7 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ## Phase 7: UX Streamlining
 
-### 47. [ ] Command Grouping: `service` subcommand
-
-Group all service-related tasks under a `service` subcommand and rename for clarity.
-
-**Acceptance criteria:**
-
-- `bootstrap` -> `service install` (primary, but maybe keep hidden alias for migration if desired, though per review we should just rename).
-- `disable` -> `service stop`
-- `reload` -> `service reload`
-- `uninstall` -> `service uninstall [--purge]`
-- All help text and documentation updated to reflect new structure.
-- `[BLOCKED BY: #30]`
+---
 
 ### 48. [ ] Guided Onboarding: `backutil setup`
 
@@ -249,3 +238,4 @@ Make the `status` command useful even when the daemon is not running.
 | 44 | Address user testing feedback: check error hints and logs output | `8e90c6a` | 2026-01-31 |
 | 45 | Fix log selection logic to prefer most recent file by mtime | `0292cf4` | 2026-01-30 |
 | 46 | Sync mount status on daemon restart | `2e0f85d` | 2026-01-31 |
+| 47 | Command Grouping: `service` subcommand | `8b91c7a` | 2026-01-31 |

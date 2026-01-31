@@ -61,15 +61,10 @@ enum Commands {
     },
     /// Launch interactive dashboard
     Tui,
-    /// Generate and enable the background service
-    Bootstrap,
-    /// Stop and disable the background service
-    Disable,
-    /// Remove the background service
-    Uninstall {
-        /// Also remove configuration, logs, and password files
-        #[arg(long)]
-        purge: bool,
+    /// Service management commands
+    Service {
+        #[command(subcommand)]
+        subcommand: ServiceSubcommand,
     },
     /// Tail the log file
     Logs {
@@ -103,8 +98,22 @@ enum Commands {
         #[arg(long)]
         config_only: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum ServiceSubcommand {
+    /// Generate and enable the background service
+    Install,
+    /// Stop and disable the background service
+    Stop,
     /// Reload the daemon configuration
     Reload,
+    /// Remove the background service
+    Uninstall {
+        /// Also remove configuration, logs, and password files
+        #[arg(long)]
+        purge: bool,
+    },
 }
 
 #[tokio::main]
@@ -140,15 +149,20 @@ async fn main() -> anyhow::Result<()> {
         Commands::Logs { follow } => {
             handle_logs(follow, json, quiet).await?;
         }
-        Commands::Bootstrap => {
-            handle_bootstrap(json, quiet).await?;
-        }
-        Commands::Disable => {
-            handle_disable(json, quiet).await?;
-        }
-        Commands::Uninstall { purge } => {
-            handle_uninstall(purge, json, quiet).await?;
-        }
+        Commands::Service { subcommand } => match subcommand {
+            ServiceSubcommand::Install => {
+                handle_bootstrap(json, quiet).await?;
+            }
+            ServiceSubcommand::Stop => {
+                handle_disable(json, quiet).await?;
+            }
+            ServiceSubcommand::Reload => {
+                handle_reload(json, quiet).await?;
+            }
+            ServiceSubcommand::Uninstall { purge } => {
+                handle_uninstall(purge, json, quiet).await?;
+            }
+        },
         Commands::Purge { set, force } => {
             handle_purge(set, force, json, quiet).await?;
         }
@@ -160,9 +174,6 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Check { set, config_only } => {
             handle_check(set, config_only, json, quiet).await?;
-        }
-        Commands::Reload => {
-            handle_reload(json, quiet).await?;
         }
         Commands::Tui => {
             println!("Command not yet implemented.");
