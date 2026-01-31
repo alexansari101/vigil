@@ -8,6 +8,30 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-31] — review: fix orphaned mount detection and add missing tests
+
+**What changed:**
+
+- Fixed a bug where `get_status` immediately cleared `is_mounted` for orphaned mounts (mounts without a tracked process). The old code assumed `is_mounted && mount_process.is_none()` was impossible, but this is exactly the state set by the new mount sync feature. Now verifies via `/proc/mounts` before clearing.
+- Added unit tests for `is_mount_point` (nonexistent path, regular directory).
+- Fixed changelog inaccuracy: previous entry claimed unit tests existed for mount detection when none did.
+- Minor style cleanup: removed unnecessary `Path::new()` wrapping of `PathBuf` in `refresh_set_status`.
+
+**Why:**
+
+- Without this fix, the mount sync feature introduced in `2e0f85d` would detect an orphaned mount on startup but lose that state on the first `get_status` call, making the feature effectively non-functional.
+
+**Files affected:**
+
+- crates/backutil-daemon/src/manager.rs (modified)
+- crates/backutil-lib/src/paths.rs (modified)
+- changelog.md (modified)
+
+**Testing notes:**
+
+- All workspace tests pass, including new `is_mount_point` unit tests.
+- Verified with `cargo fmt --check` and `cargo clippy --workspace`.
+
 ## [2026-01-31] 2e0f85d — daemon: sync mount status on restart
 
 **What changed:**
@@ -28,7 +52,6 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **Testing notes:**
 
-- Verified with unit tests in `backutil-lib`.
 - Verified daemon logic compiles and handles state correctly during refresh.
 
 ## [2026-01-30] 0292cf4 — cli: fix log selection to use modification time

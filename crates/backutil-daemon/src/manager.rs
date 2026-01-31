@@ -110,9 +110,8 @@ impl JobManager {
             .await;
 
         let size_res = Self::calculate_dir_size(std::path::Path::new(&target)).await;
-        let is_mounted_res = backutil_lib::paths::is_mount_point(std::path::Path::new(
-            &backutil_lib::paths::mount_path(set_name),
-        ));
+        let is_mounted_res =
+            backutil_lib::paths::is_mount_point(&backutil_lib::paths::mount_path(set_name));
 
         // Apply results under the lock
         let mut jobs = self.jobs.lock().await;
@@ -641,8 +640,17 @@ impl JobManager {
                         }
                     }
                 } else {
-                    // Should not happen if is_mounted is true
-                    job.is_mounted = false;
+                    // No mount process tracked — this can happen for orphaned mounts detected
+                    // via /proc/mounts on daemon restart. Verify the mount is still active.
+                    if !backutil_lib::paths::is_mount_point(&backutil_lib::paths::mount_path(
+                        &job.set.name,
+                    )) {
+                        debug!(
+                            "Set '{}' was marked mounted but mount no longer exists, clearing state",
+                            job.set.name
+                        );
+                        job.is_mounted = false;
+                    }
                 }
             }
 

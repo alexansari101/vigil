@@ -179,4 +179,19 @@ mod tests {
         let p = systemd_unit_path();
         assert!(p.ends_with("systemd/user/backutil-daemon.service"));
     }
+
+    #[test]
+    fn test_is_mount_point_nonexistent() {
+        // A path that does not exist should not be a mount point
+        assert!(!is_mount_point(std::path::Path::new(
+            "/tmp/backutil_nonexistent_path_for_test"
+        )));
+    }
+
+    #[test]
+    fn test_is_mount_point_regular_dir() {
+        // A regular temp directory should not be detected as a mount point
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(!is_mount_point(tmp.path()));
+    }
 }
