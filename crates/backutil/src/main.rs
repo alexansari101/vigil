@@ -561,7 +561,7 @@ async fn handle_unmount(set_name: Option<String>, json: bool, quiet: bool) -> an
     Ok(())
 }
 
-async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<()> {
+async fn handle_logs(follow: bool, _json: bool, quiet: bool) -> anyhow::Result<()> {
     use std::io::Write;
     use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
@@ -589,10 +589,14 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
 
     if log_path.is_none() {
         if !follow {
-            println!("No log files found in {:?}", log_dir);
+            if !quiet {
+                println!("No log files found in {:?}", log_dir);
+            }
             return Ok(());
         }
-        println!("Waiting for log file in {:?} to be created...", log_dir);
+        if !quiet {
+            println!("Waiting for log file in {:?} to be created...", log_dir);
+        }
         while log_path.is_none() {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             log_path = find_latest_log();
@@ -649,8 +653,10 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
                 // File might have been rotated/deleted, try to find latest again
                 if let Some(latest) = find_latest_log() {
                     if latest != current_log_path {
-                        println!("--- Log shifted/rotated to {} ---", latest.display());
-                        std::io::stdout().flush()?;
+                        if !quiet {
+                            println!("--- Log shifted/rotated to {} ---", latest.display());
+                            std::io::stdout().flush()?;
+                        }
                         current_log_path = latest;
                         file = tokio::fs::File::open(&current_log_path).await?;
                         pos = 0;
@@ -666,8 +672,10 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
 
         if current_size < pos {
             // Log file was truncated or rotated - re-open the file
-            println!("--- Log file truncated ---");
-            std::io::stdout().flush()?;
+            if !quiet {
+                println!("--- Log file truncated ---");
+                std::io::stdout().flush()?;
+            }
             file = tokio::fs::File::open(&current_log_path).await?;
             pos = 0;
         }
@@ -694,8 +702,10 @@ async fn handle_logs(follow: bool, _json: bool, _quiet: bool) -> anyhow::Result<
         // Check for log rotation
         if let Some(latest) = find_latest_log() {
             if latest != current_log_path {
-                println!("--- Log rotated to {} ---", latest.display());
-                std::io::stdout().flush()?;
+                if !quiet {
+                    println!("--- Log rotated to {} ---", latest.display());
+                    std::io::stdout().flush()?;
+                }
                 current_log_path = latest;
                 file = tokio::fs::File::open(&current_log_path).await?;
                 pos = 0;
