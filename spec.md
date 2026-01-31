@@ -119,6 +119,8 @@ Communication between CLI/TUI and daemon uses JSON over Unix socket. Each messag
 | `Shutdown` | none | Graceful daemon shutdown |
 | `Ping` | none | Health check |
 
+**Note:** The `purge` operation (deleting a backup set's repository) is handled entirely CLI-side. The CLI sends `Unmount` + `ReloadConfig` to the daemon, then deletes the repository directory directly. See `backutil purge` in Section 13.
+
 ### Response Types
 
 | Type | Payload | Description |
@@ -376,4 +378,25 @@ $ backutil check
 $ backutil check --config-only
 ✓ Configuration valid: 2 backup sets defined
 ✓ Password file exists and is readable
+```
+
+**`backutil purge <SET> [--force]`**
+
+Permanently deletes a backup set's Restic repository and mount point. This is a CLI-side operation: it unmounts via daemon IPC, triggers a config reload, then deletes the repository directory and mount point directly from the filesystem. Does not use a dedicated IPC request.
+
+```
+$ backutil purge personal
+WARNING: This will permanently delete ALL backup data for 'personal' at '/mnt/backup/personal' and can NOT be undone!
+Source files will NOT be affected.
+Are you sure you want to proceed? [y/N]: y
+Successfully purged backup set 'personal'.
+```
+
+**`backutil reload`**
+
+Triggers the daemon to reload its configuration from disk. Requires daemon to be running.
+
+```
+$ backutil reload
+Successfully triggered configuration reload.
 ```
