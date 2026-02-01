@@ -56,7 +56,6 @@ target = "{}"
 
 #[test]
 #[serial]
-#[ignore] // Still issues with rpassword hidden input in tests
 fn test_cli_setup_fresh() -> Result<()> {
     let temp_dir = TempDir::new()?;
     let config_dir = temp_dir.path().join("config");

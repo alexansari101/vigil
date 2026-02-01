@@ -4,6 +4,7 @@ use backutil_lib::paths;
 use backutil_lib::types::{JobState, SetStatus};
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
+use std::io::IsTerminal;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 
@@ -219,8 +220,16 @@ async fn handle_init(set_name: Option<String>, json: bool, quiet: bool) -> anyho
         if !quiet && !json {
             println!("Repository password file not found.");
         }
-        let password = rpassword::prompt_password("Enter password for new repositories: ")?;
-        let confirm = rpassword::prompt_password("Confirm password: ")?;
+        let password = if std::io::stdin().is_terminal() {
+            rpassword::prompt_password("Enter password for new repositories: ")?
+        } else {
+            prompt_user("Enter password for new repositories: ")?
+        };
+        let confirm = if std::io::stdin().is_terminal() {
+            rpassword::prompt_password("Confirm password: ")?
+        } else {
+            prompt_user("Confirm password: ")?
+        };
 
         if password != confirm {
             anyhow::bail!("Passwords do not match.");
@@ -1526,11 +1535,19 @@ async fn handle_setup(json: bool, quiet: bool) -> anyhow::Result<()> {
             println!("🔑 Step 1: Create a repository password");
             println!("This password will be used to encrypt all your repositories.");
         }
-        let password = rpassword::prompt_password("Enter new repository password: ")?;
+        let password = if std::io::stdin().is_terminal() {
+            rpassword::prompt_password("Enter new repository password: ")?
+        } else {
+            prompt_user("Enter new repository password: ")?
+        };
         if password.is_empty() {
             anyhow::bail!("Password cannot be empty.");
         }
-        let confirm = rpassword::prompt_password("Confirm password: ")?;
+        let confirm = if std::io::stdin().is_terminal() {
+            rpassword::prompt_password("Confirm password: ")?
+        } else {
+            prompt_user("Confirm password: ")?
+        };
 
         if password != confirm {
             anyhow::bail!("Passwords do not match.");
