@@ -8,8 +8,54 @@ struct DaemonGuard(Child);
 
 impl Drop for DaemonGuard {
     fn drop(&mut self) {
+        // Try graceful shutdown with SIGTERM first
+        #[cfg(unix)]
+        {
+            let pid = self.0.id();
+            unsafe {
+                libc::kill(pid as i32, libc::SIGTERM);
+            }
+        }
+
+        // Give it a moment to cleanup
+        let mut attempts = 0;
+        while attempts < 20 {
+            if let Ok(Some(_)) = self.0.try_wait() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+            attempts += 1;
+        }
+
+        // Fallback to kill
         let _ = self.0.kill();
         let _ = self.0.wait();
+    }
+}
+
+struct MountGuard {
+    set_name: String,
+    config_path: std::path::PathBuf,
+    config_dir: std::path::PathBuf,
+    data_dir: std::path::PathBuf,
+    runtime_dir: std::path::PathBuf,
+}
+
+impl Drop for MountGuard {
+    fn drop(&mut self) {
+        let _ = Command::new("cargo")
+            .arg("run")
+            .arg("--bin")
+            .arg("backutil")
+            .arg("--")
+            .arg("unmount")
+            .arg(&self.set_name)
+            .env("BACKUTIL_CONFIG", &self.config_path)
+            .env("XDG_CONFIG_HOME", &self.config_dir)
+            .env("XDG_DATA_HOME", &self.data_dir)
+            .env("XDG_RUNTIME_DIR", &self.runtime_dir)
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .output();
     }
 }
 
@@ -145,6 +191,15 @@ target = "{}"
         "Mount failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+
+    let _mount_guard = MountGuard {
+        set_name: "test_set".to_string(),
+        config_path: config_file_path.clone(),
+        config_dir: config_dir.clone(),
+        data_dir: data_dir.clone(),
+        runtime_dir: runtime_dir.clone(),
+    };
+
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("Browse your snapshots at:"),

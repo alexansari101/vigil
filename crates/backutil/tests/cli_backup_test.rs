@@ -141,6 +141,25 @@ target = "{}"
 
 impl Drop for TestEnv {
     fn drop(&mut self) {
+        // Try graceful shutdown with SIGTERM first
+        #[cfg(unix)]
+        {
+            let pid = self.daemon.id();
+            unsafe {
+                libc::kill(pid as i32, libc::SIGTERM);
+            }
+        }
+
+        // Give it a moment to cleanup
+        let mut attempts = 0;
+        while attempts < 20 {
+            if let Ok(Some(_)) = self.daemon.try_wait() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+            attempts += 1;
+        }
+
         let _ = self.daemon.kill();
         let _ = self.daemon.wait();
     }

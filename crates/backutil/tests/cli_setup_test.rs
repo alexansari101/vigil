@@ -20,20 +20,26 @@ fn test_cli_setup_idempotent() -> Result<()> {
     let pass_path = backutil_config_dir.join(".repo_password");
     fs::write(&pass_path, "existingpass")?;
 
-    let config_content = r#"
+    let source_path = temp_dir.path().join("source");
+    let target_path = temp_dir.path().join("target");
+    let config_content = format!(
+        r#"
 [global]
 debounce_seconds = 60
 
 [[backup_set]]
 name = "existing"
-source = "/tmp/source"
-target = "/tmp/target"
-"#;
+source = "{}"
+target = "{}"
+"#,
+        source_path.display(),
+        target_path.display()
+    );
     fs::write(&config_file, config_content)?;
 
     let backutil_bin = env!("CARGO_BIN_EXE_backutil");
 
-    let output = Command::new(&backutil_bin)
+    let output = Command::new(backutil_bin)
         .arg("setup")
         .env("XDG_CONFIG_HOME", &config_dir)
         .env("XDG_DATA_HOME", &data_dir)
@@ -61,7 +67,7 @@ fn test_cli_setup_fresh() -> Result<()> {
 
     let backutil_bin = env!("CARGO_BIN_EXE_backutil");
 
-    let mut child = Command::new(&backutil_bin)
+    let mut child = Command::new(backutil_bin)
         .arg("setup")
         .env("XDG_CONFIG_HOME", &config_dir)
         .env("XDG_DATA_HOME", &data_dir)
@@ -76,9 +82,11 @@ fn test_cli_setup_fresh() -> Result<()> {
     writeln!(stdin, "testpass")?;
 
     // Step 2: Config
+    let src_path = temp_dir.path().join("src");
+    let tgt_path = temp_dir.path().join("tgt");
     writeln!(stdin, "testset")?;
-    writeln!(stdin, "/tmp/src")?;
-    writeln!(stdin, "/tmp/tgt")?;
+    writeln!(stdin, "{}", src_path.display())?;
+    writeln!(stdin, "{}", tgt_path.display())?;
 
     // Init offer?
     writeln!(stdin, "n")?;
@@ -118,7 +126,7 @@ fn test_cli_setup_partial() -> Result<()> {
 
     let backutil_bin = env!("CARGO_BIN_EXE_backutil");
 
-    let mut child = Command::new(&backutil_bin)
+    let mut child = Command::new(backutil_bin)
         .arg("setup")
         .env("XDG_CONFIG_HOME", &config_dir)
         .env("XDG_DATA_HOME", &data_dir)
@@ -130,9 +138,11 @@ fn test_cli_setup_partial() -> Result<()> {
     let stdin = child.stdin.as_mut().unwrap();
 
     // Should skip password and go straight to config
+    let src_path = temp_dir.path().join("src");
+    let tgt_path = temp_dir.path().join("tgt");
     writeln!(stdin, "partialset")?;
-    writeln!(stdin, "/tmp/src")?;
-    writeln!(stdin, "/tmp/tgt")?;
+    writeln!(stdin, "{}", src_path.display())?;
+    writeln!(stdin, "{}", tgt_path.display())?;
 
     // Init offer?
     writeln!(stdin, "n")?;
