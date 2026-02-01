@@ -51,7 +51,7 @@ From there, you can add additional backup sets effortlessly. The following will 
 vigil track "work-docs" ~/documents /mnt/backups/work
 ```
 
-Folders are now being watched for changes and backed up automatically. However, you can kick-off a first backup manually:
+Folders are now being watched for changes and backed up automatically. You can also kick-off a first backup manually:
 
 ```bash
 vigil backup
