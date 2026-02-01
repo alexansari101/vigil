@@ -79,6 +79,11 @@ pub enum ResponseData {
         succeeded: Vec<(String, u64)>, // (set_name, reclaimed_bytes)
         failed: Vec<(String, String)>, // (set_name, error_message)
     },
+    /// Notification that automatic retention enforcement completed after backup.
+    PruneComplete {
+        set_name: String,
+        reclaimed_bytes: u64,
+    },
 }
 
 /// Common error codes used in IPC error responses.

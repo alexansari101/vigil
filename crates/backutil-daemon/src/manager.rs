@@ -547,6 +547,25 @@ impl JobManager {
                         }
                     }
 
+                    // Trigger automatic pruning if retention policy exists
+                    {
+                        let jobs_lock = jobs.lock().await;
+                        if let Some(job) = jobs_lock.get(&set_name) {
+                            let effective_set = manager.with_effective_retention(&job.set).await;
+                            if effective_set.retention.is_some() {
+                                let manager_clone = manager.clone();
+                                let set_name_clone = set_name.clone();
+                                let event_tx_clone = event_tx.clone();
+
+                                tokio::spawn(async move {
+                                    manager_clone
+                                        .auto_prune_after_backup(&set_name_clone, event_tx_clone)
+                                        .await;
+                                });
+                            }
+                        }
+                    }
+
                     if let Some(target) = metrics_target {
                         let manager = manager.clone();
                         let set_name_clone = set_name.clone();
@@ -750,6 +769,28 @@ impl JobManager {
         }
     }
 
+    /// Core prune logic for a single set. Used by both manual prune and auto-prune.
+    async fn prune_set(&self, set_name: &str, effective_set: &BackupSet) -> Result<u64> {
+        info!("Pruning set {}", set_name);
+        let reclaimed = self
+            .executor
+            .prune(effective_set, Some(self.shutdown_token.clone()))
+            .await?;
+        info!("Pruned set {}: {} bytes reclaimed", set_name, reclaimed);
+
+        // Refresh metrics after prune
+        let target = effective_set.target.clone();
+        let manager = self.clone();
+        let set_name_clone = set_name.to_string();
+
+        tokio::spawn(async move {
+            manager.refresh_set_status(&set_name_clone).await;
+            manager.refresh_related_sets(&target, &set_name_clone).await;
+        });
+
+        Ok(reclaimed)
+    }
+
     pub async fn prune(&self, set_name: Option<String>) -> Result<backutil_lib::ipc::ResponseData> {
         if let Some(name) = set_name {
             let effective_set = {
@@ -761,23 +802,7 @@ impl JobManager {
                 }
             };
 
-            info!("Pruning set {}", name);
-            // Can pass shutdown token here to allow cancellation
-            let reclaimed = self
-                .executor
-                .prune(&effective_set, Some(self.shutdown_token.clone()))
-                .await?;
-            info!("Pruned set {}: {} bytes reclaimed", name, reclaimed);
-
-            // Refresh metrics after prune
-            let target = effective_set.target.clone();
-            let manager = self.clone();
-            let set_name_clone = name.clone();
-
-            tokio::spawn(async move {
-                manager.refresh_set_status(&set_name_clone).await;
-                manager.refresh_related_sets(&target, &set_name_clone).await;
-            });
+            let reclaimed = self.prune_set(&name, &effective_set).await?;
 
             Ok(backutil_lib::ipc::ResponseData::PruneResult {
                 set_name: name,
@@ -832,6 +857,62 @@ impl JobManager {
             }
 
             Ok(backutil_lib::ipc::ResponseData::PrunesTriggered { succeeded, failed })
+        }
+    }
+
+    /// Automatically prune a set after successful backup if retention policy exists.
+    /// This is called asynchronously and logs errors instead of returning them.
+    async fn auto_prune_after_backup(&self, set_name: &str, event_tx: broadcast::Sender<Response>) {
+        if self.shutdown_token.is_cancelled() {
+            return;
+        }
+
+        // Wait briefly to allow repository lock to be released from backup
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        if self.shutdown_token.is_cancelled() {
+            return;
+        }
+
+        let effective_set = {
+            let jobs = self.jobs.lock().await;
+            match jobs.get(set_name) {
+                Some(job) => self.with_effective_retention(&job.set).await,
+                None => {
+                    warn!("Cannot auto-prune set {}: set no longer exists", set_name);
+                    return;
+                }
+            }
+        };
+
+        info!("Auto-pruning set {} after successful backup", set_name);
+
+        // Reuse existing prune_set() logic
+        match self.prune_set(set_name, &effective_set).await {
+            Ok(reclaimed) => {
+                // Send event for transparency
+                let _ = event_tx.send(Response::Ok(Some(ResponseData::PruneComplete {
+                    set_name: set_name.to_string(),
+                    reclaimed_bytes: reclaimed,
+                })));
+            }
+            Err(e) => {
+                error!(
+                    "Auto-prune failed for set {} (backup succeeded): {}",
+                    set_name, e
+                );
+
+                if !self.shutdown_token.is_cancelled() {
+                    let _ = notify_rust::Notification::new()
+                        .summary("Automatic Prune Failed")
+                        .body(&format!(
+                            "Retention cleanup failed for '{}'. Manual prune may be needed.",
+                            set_name
+                        ))
+                        .icon("dialog-warning")
+                        .show();
+                }
+            }
         }
     }
 

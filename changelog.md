@@ -8,6 +8,38 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-31] — daemon: implement automatic retention policy enforcement
+
+**What changed:**
+
+- Implemented automatic pruning after successful backups when a retention policy is configured.
+- Added `prune_set()` helper method to share core pruning logic between manual and automatic operations.
+- Added `auto_prune_after_backup()` method that spawns async pruning task after backup completion.
+- Added new `PruneComplete` IPC event variant to notify clients of automatic retention cleanup.
+- Modified `job_worker()` to trigger automatic pruning after `BackupComplete` event is sent.
+- Added comprehensive integration test `test_auto_prune_after_backup()` to verify the feature.
+
+**Why:**
+
+- Previously, retention policies were only enforced via manual `backutil prune` command, requiring user intervention.
+- Automatic enforcement ensures repositories stay within configured limits without manual maintenance.
+- Improves the "set-it-and-forget-it" automation goal of the project.
+
+**Files affected:**
+
+- crates/backutil-daemon/src/manager.rs (modified)
+- crates/backutil-lib/src/ipc.rs (modified)
+- crates/backutil-daemon/tests/integration_test.rs (modified)
+
+**Testing notes:**
+
+- All existing unit tests pass without modification.
+- New integration test `test_auto_prune_after_backup` verifies automatic pruning behavior.
+- Manual testing: Configure retention policy, trigger multiple backups, verify snapshot count stays within limits.
+- Auto-prune failures are logged and notify user without affecting backup success status.
+
+---
+
 ## [2026-01-31] 3a60602 — cli: implement `track` and `untrack` commands
 
 **What changed:**
