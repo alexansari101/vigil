@@ -438,7 +438,7 @@ async fn handle_backup(
                 // Some Ok(None) might be returned for other requests, but here we expect data
             }
             Response::Error { code, message } => {
-                eprintln!("Error from daemon ({}): {}", code, message);
+                eprintln!("Error from service daemon ({}): {}", code, message);
                 if code == backutil_lib::ipc::error_codes::RESTIC_ERROR
                     || code == backutil_lib::ipc::error_codes::BACKUP_FAILED
                 {
@@ -494,10 +494,10 @@ async fn handle_status(json: bool, quiet: bool) -> anyhow::Result<()> {
             }
         }
         Response::Ok(_) => {
-            println!("Unexpected response from daemon.");
+            println!("Unexpected response from service daemon.");
         }
         Response::Error { code, message } => {
-            eprintln!("Error from daemon ({}): {}", code, message);
+            eprintln!("Error from service daemon ({}): {}", code, message);
             std::process::exit(1);
         }
         Response::Pong => {
@@ -543,7 +543,7 @@ async fn handle_mount(
                     println!("Use `cp` to recover files, then `backutil unmount` when done.");
                 }
             } else {
-                println!("Unexpected response from daemon.");
+                println!("Unexpected response from service daemon.");
             }
         }
         Response::Error { code, message } => {
@@ -551,7 +551,7 @@ async fn handle_mount(
             std::process::exit(5); // Exit code 5 per spec.md Section 12: Mount/unmount error
         }
         _ => {
-            println!("Unexpected response from daemon.");
+            println!("Unexpected response from service daemon.");
         }
     }
 
@@ -593,7 +593,7 @@ async fn handle_unmount(set_name: Option<String>, json: bool, quiet: bool) -> an
             std::process::exit(5); // Exit code 5 per spec.md Section 12: Mount/unmount error
         }
         _ => {
-            println!("Unexpected response from daemon.");
+            println!("Unexpected response from service daemon.");
         }
     }
 
@@ -1694,10 +1694,10 @@ async fn connect_to_daemon() -> anyhow::Result<UnixStream> {
             || e.kind() == std::io::ErrorKind::ConnectionRefused
         {
             // Exit code 3 per spec.md
-            eprintln!("Error: Daemon is not running.");
+            eprintln!("Error: Service daemon is not running.");
             std::process::exit(3);
         }
-        anyhow!("Failed to connect to daemon: {}", e)
+        anyhow!("Failed to connect to service daemon: {}", e)
     })
 }
 
@@ -1712,7 +1712,7 @@ async fn receive_response<R: AsyncBufReadExt + Unpin>(reader: &mut R) -> anyhow:
     let mut line = String::new();
     reader.read_line(&mut line).await?;
     if line.is_empty() {
-        return Err(anyhow!("Connection closed by daemon"));
+        return Err(anyhow!("Connection closed by service daemon"));
     }
     let response: Response = serde_json::from_str(&line)?;
     Ok(response)
@@ -1881,7 +1881,7 @@ async fn handle_track(
         }
         Err(_) => {
             if !quiet && !json {
-                println!("Note: Daemon not running, skip reload.");
+                println!("Note: Service daemon not running, skip reload.");
             }
         }
     }
@@ -1937,7 +1937,7 @@ async fn handle_untrack(name: String, purge: bool, json: bool, quiet: bool) -> a
         }
         Err(_) => {
             if !quiet && !json {
-                println!("Note: Daemon not running, skip reload.");
+                println!("Note: Service daemon not running, skip reload.");
             }
         }
     }
