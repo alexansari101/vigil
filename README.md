@@ -45,10 +45,10 @@ Run the wizard to configure your first backup set, set your repository password,
 vigil setup
 ```
 
-From there, you can add additional backup sets effortlessly. The following will back up the `~/documents` folder and create an encrypted backup repository at`/mnt/backups/work`:
+From there, you can add additional backup sets effortlessly. The following will create a backup set named `work-docs` that backs up the `~/documents` folder to a new encrypted repository, which will be created at `/mnt/backups/work`:
 
 ```bash
-vigil track "work-docs" ~/documents /mnt/backups/work
+vigil track work-docs ~/documents /mnt/backups/work
 ```
 
 Folders are now being watched for changes and backed up automatically. You can also kick-off a first backup manually:
