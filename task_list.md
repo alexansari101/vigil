@@ -210,4 +210,4 @@ Make the `status` command useful even when the daemon is not running.
 | 46 | Sync mount status on daemon restart | `2e0f85d` | 2026-01-31 |
 | 47 | Command Grouping: `service` subcommand | `744e025` | 2026-01-31 |
 | 48 | Guided Onboarding: `backutil setup` | `d819fdd` | 2026-01-31 |
-| 49 | Config Management: `track` and `untrack` | `67dc1c2` | 2026-01-31 |
+| 49 | Config Management: `track` and `untrack` | `3a60602` | 2026-01-31 |

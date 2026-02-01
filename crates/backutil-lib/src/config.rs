@@ -171,6 +171,8 @@ pub fn load_config_raw() -> Result<Config, ConfigError> {
 
 /// Saves the configuration to the active config path.
 pub fn save_config(config: &Config) -> Result<(), ConfigError> {
+    config.check_validity()?;
+
     let path = crate::paths::active_config_path();
 
     // Create parent directory if it doesn't exist
@@ -316,6 +318,7 @@ target = "/tmp/backup2"
         assert!(json.contains("\"name\":\"test\""));
         assert!(json.contains("\"target\":\"~/backup\""));
     }
+
     #[test]
     fn test_save_and_load_raw() {
         let temp = tempfile::tempdir().unwrap();

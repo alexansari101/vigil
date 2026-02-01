@@ -1815,20 +1815,34 @@ async fn handle_track(
 ) -> anyhow::Result<()> {
     use backutil_lib::config::{load_config_raw, save_config, BackupSet};
 
+    // Validate name: alphanumeric, hyphens, and underscores only
+    if !name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(anyhow!(
+            "Invalid set name '{}': only alphanumeric characters, hyphens, and underscores are allowed",
+            name
+        ));
+    }
+
     if !quiet && !json {
         println!("Tracking new backup set '{}'...", name);
     }
 
     let mut config = match load_config_raw() {
         Ok(c) => c,
-        Err(_) => {
-            // If config doesn't exist, create a new one
+        Err(backutil_lib::config::ConfigError::Io(ref e))
+            if e.kind() == std::io::ErrorKind::NotFound =>
+        {
+            // Config doesn't exist yet — create a new one
             use backutil_lib::config::{Config, GlobalConfig};
             Config {
                 global: GlobalConfig::default(),
                 backup_sets: Vec::new(),
             }
         }
+        Err(e) => return Err(anyhow!(e).context("Failed to load configuration")),
     };
 
     if config.backup_sets.iter().any(|s| s.name == name) {
@@ -1875,7 +1889,7 @@ async fn handle_track(
     if !quiet && !json {
         println!("Successfully tracking '{}'.", name);
     } else if json {
-        println!(r#"{{"status":"ok","set":"{}"}}"#, name);
+        println!("{}", serde_json::json!({"status": "ok", "set": name}));
     }
 
     Ok(())
@@ -1931,7 +1945,7 @@ async fn handle_untrack(name: String, purge: bool, json: bool, quiet: bool) -> a
     if !quiet && !json {
         println!("Successfully untracked '{}'.", name);
     } else if json {
-        println!(r#"{{"status":"ok","untracked":"{}"}}"#, name);
+        println!("{}", serde_json::json!({"status": "ok", "untracked": name}));
     }
 
     Ok(())

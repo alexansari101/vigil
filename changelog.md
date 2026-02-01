@@ -8,7 +8,7 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
-## [2026-01-31] — cli: implement `track` and `untrack` commands
+## [2026-01-31] 3a60602 — cli: implement `track` and `untrack` commands
 
 **What changed:**
 
