@@ -189,10 +189,12 @@ pub fn save_config(config: &Config) -> Result<(), ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
     #[test]
+    #[serial]
     fn test_valid_config() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(
@@ -320,6 +322,7 @@ target = "/tmp/backup2"
     }
 
     #[test]
+    #[serial]
     fn test_save_and_load_raw() {
         let temp = tempfile::tempdir().unwrap();
         let config_path = temp.path().join("config.toml");
