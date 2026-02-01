@@ -8,7 +8,7 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
-## [2026-01-31] — cli: group service-related commands under `service` subcommand
+## [2026-01-31] 744e025 — cli: group service-related commands under `service` subcommand
 
 **What changed:**
 

@@ -238,4 +238,4 @@ Make the `status` command useful even when the daemon is not running.
 | 44 | Address user testing feedback: check error hints and logs output | `8e90c6a` | 2026-01-31 |
 | 45 | Fix log selection logic to prefer most recent file by mtime | `0292cf4` | 2026-01-30 |
 | 46 | Sync mount status on daemon restart | `2e0f85d` | 2026-01-31 |
-| 47 | Command Grouping: `service` subcommand | `8b91c7a` | 2026-01-31 |
+| 47 | Command Grouping: `service` subcommand | `744e025` | 2026-01-31 |

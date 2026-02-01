@@ -730,7 +730,7 @@ async fn handle_logs(follow: bool, _json: bool, quiet: bool) -> anyhow::Result<(
 
 async fn handle_bootstrap(json: bool, quiet: bool) -> anyhow::Result<()> {
     if !quiet && !json {
-        println!("Bootstrapping backutil...");
+        println!("Installing backutil service...");
     }
 
     // 1. Dependency check
@@ -809,9 +809,9 @@ WantedBy=default.target
 
     if status.success() {
         if json {
-            println!("{}", serde_json::json!({ "status": "bootstrapped" }));
+            println!("{}", serde_json::json!({ "status": "installed" }));
         } else if !quiet {
-            println!("Successfully bootstrapped backutil-daemon.");
+            println!("Successfully installed backutil-daemon service.");
         }
     } else {
         anyhow::bail!("Failed to enable/start backutil-daemon service.");
@@ -910,7 +910,9 @@ async fn handle_uninstall(purge: bool, json: bool, quiet: bool) -> anyhow::Resul
 
     // 4. Purge if requested
     if purge {
-        println!("Purging configuration and data...");
+        if !quiet && !json {
+            println!("Purging configuration and data...");
+        }
         let config_dir = paths::config_dir();
         if config_dir.exists() {
             std::fs::remove_dir_all(&config_dir)?;
