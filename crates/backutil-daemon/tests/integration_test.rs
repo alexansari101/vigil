@@ -12,6 +12,35 @@ use tempfile::tempdir;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+async fn wait_for_snapshot_count(
+    job_manager: &JobManager,
+    set_name: &str,
+    expected: usize,
+) -> Result<()> {
+    let start = std::time::Instant::now();
+    let timeout = Duration::from_secs(10);
+    while start.elapsed() < timeout {
+        let status = job_manager.get_status().await;
+        if let Some(set) = status.iter().find(|s| s.name == set_name) {
+            if set.snapshot_count == Some(expected) {
+                return Ok(());
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let status = job_manager.get_status().await;
+    let actual = status
+        .iter()
+        .find(|s| s.name == set_name)
+        .and_then(|s| s.snapshot_count);
+    anyhow::bail!(
+        "Timeout waiting for snapshot count {} for set {}. Actual: {:?}",
+        expected,
+        set_name,
+        actual
+    )
+}
+
 /// End-to-end integration test for file watcher + debounce logic.
 /// This test validates the complete pipeline: file change → watcher → JobManager → state transitions.
 /// Eliminates the need for manual verification of real-time file detection.
@@ -109,13 +138,17 @@ async fn test_file_watcher_to_debounce_integration() -> Result<()> {
 
     // Wait for debounce to complete and backup to finish
     // (1s debounce + real backup which is fast for small files)
-    tokio::time::sleep(Duration::from_millis(2500)).await;
-    let state = get_state().await;
-    assert_eq!(
-        state,
-        JobState::Idle,
-        "Expected Idle after backup completes"
-    );
+    let start = std::time::Instant::now();
+    let timeout = Duration::from_secs(5);
+    let mut success = false;
+    while start.elapsed() < timeout {
+        if get_state().await == JobState::Idle {
+            success = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(success, "Expected Idle after backup completes");
 
     // Drain any remaining events from the first test
     while tokio::time::timeout(Duration::from_millis(50), watcher_rx.recv())
@@ -155,12 +188,17 @@ async fn test_file_watcher_to_debounce_integration() -> Result<()> {
     );
 
     // Wait for full cycle: debounce (1s) + backup + margin
-    tokio::time::sleep(Duration::from_millis(2500)).await;
-    assert_eq!(
-        get_state().await,
-        JobState::Idle,
-        "Expected Idle after backup"
-    );
+    let start = std::time::Instant::now();
+    let timeout = Duration::from_secs(5);
+    let mut success = false;
+    while start.elapsed() < timeout {
+        if get_state().await == JobState::Idle {
+            success = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(success, "Expected Idle after backup");
 
     // Cleanup is automatic via tempdir drop
     Ok(())
@@ -228,17 +266,6 @@ async fn test_auto_prune_after_backup() -> Result<()> {
     let job_manager = JobManager::new(&config, CancellationToken::new());
     let mut event_rx = job_manager.subscribe();
 
-    // Helper to get snapshot count
-    let get_snapshot_count = || async {
-        job_manager
-            .get_status()
-            .await
-            .into_iter()
-            .find(|s| s.name == "test")
-            .and_then(|s| s.snapshot_count)
-            .unwrap_or(0)
-    };
-
     // Create initial file
     fs::write(source_path.join("file1.txt"), "data1")?;
 
@@ -255,9 +282,18 @@ async fn test_auto_prune_after_backup() -> Result<()> {
     }
     assert!(backup_completed, "First backup should complete");
 
-    // Wait for metrics refresh (background task)
-    tokio::time::sleep(Duration::from_secs(2)).await;
-    assert_eq!(get_snapshot_count().await, 1, "Should have 1 snapshot");
+    // Wait for PruneComplete (even if no snapshots pruned, auto-prune still runs)
+    let mut prune_completed = false;
+    while let Ok(event) = tokio::time::timeout(Duration::from_secs(5), event_rx.recv()).await {
+        if let Ok(Response::Ok(Some(ResponseData::PruneComplete { .. }))) = event {
+            prune_completed = true;
+            break;
+        }
+    }
+    assert!(prune_completed, "First auto-prune should complete");
+
+    // Wait for metrics refresh
+    wait_for_snapshot_count(&job_manager, "test", 1).await?;
 
     // Test 2: Second backup - no pruning needed (only 2 snapshots)
     fs::write(source_path.join("file2.txt"), "data2")?;
@@ -272,8 +308,16 @@ async fn test_auto_prune_after_backup() -> Result<()> {
     }
     assert!(backup_completed, "Second backup should complete");
 
-    tokio::time::sleep(Duration::from_secs(2)).await;
-    assert_eq!(get_snapshot_count().await, 2, "Should have 2 snapshots");
+    prune_completed = false;
+    while let Ok(event) = tokio::time::timeout(Duration::from_secs(5), event_rx.recv()).await {
+        if let Ok(Response::Ok(Some(ResponseData::PruneComplete { .. }))) = event {
+            prune_completed = true;
+            break;
+        }
+    }
+    assert!(prune_completed, "Second auto-prune should complete");
+
+    wait_for_snapshot_count(&job_manager, "test", 2).await?;
 
     // Test 3: Third backup - auto-prune should trigger (keep_last = 2)
     fs::write(source_path.join("file3.txt"), "data3")?;
@@ -308,14 +352,7 @@ async fn test_auto_prune_after_backup() -> Result<()> {
     assert!(prune_completed, "Auto-prune should have triggered");
 
     // Wait for metrics refresh after prune
-    tokio::time::sleep(Duration::from_secs(2)).await;
-
-    // Verify snapshot count is still 2 (oldest was pruned)
-    assert_eq!(
-        get_snapshot_count().await,
-        2,
-        "Should maintain 2 snapshots after auto-prune"
-    );
+    wait_for_snapshot_count(&job_manager, "test", 2).await?;
 
     Ok(())
 }

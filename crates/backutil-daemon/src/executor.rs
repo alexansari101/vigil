@@ -144,6 +144,8 @@ impl ResticExecutor {
             "--password-file".to_string(),
             password_file.to_string_lossy().to_string(),
             "--json".to_string(),
+            "--retry-lock".to_string(),
+            "1m".to_string(),
         ];
 
         if let Some(ref excludes) = set.exclude {
@@ -277,6 +279,8 @@ impl ResticExecutor {
             "--password-file".to_string(),
             password_file.to_string_lossy().to_string(),
             "--prune".to_string(),
+            "--retry-lock".to_string(),
+            "1m".to_string(),
         ];
 
         if let Some(last) = retention.keep_last {

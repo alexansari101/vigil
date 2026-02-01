@@ -8,6 +8,36 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-02-01] — bugfix: resolve auto-prune race conditions and repository lock contention
+
+**What changed:**
+
+- Improved `JobManager` to refresh metrics (snapshot count, repo size) deterministically by awaiting `refresh_set_status` before completing backup and prune operations.
+- Added `--retry-lock 1m` to all restic backup and prune commands in `ResticExecutor` to handle concurrent repository access gracefully.
+- Overhauled `test_auto_prune_after_backup` and `test_file_watcher_to_debounce_integration` to use polling-based waiting (`wait_for_snapshot_count`) instead of brittle `sleep` statements.
+- Restored accidental removal of `BackupComplete` event broadcast in the job worker.
+- Removed arbitrary `sleep(500ms)` in `auto_prune_after_backup` as it is no longer needed with deterministic refresh and lock retries.
+
+**Why:**
+
+- `test_auto_prune_after_backup` was failing due to race conditions where assertions were checked before background metrics refresh completed.
+- Simultaneous restic operations (e.g., status refresh vs. auto-prune) were causing frequent "repository already locked" errors.
+- Brittle sleeps made tests slow and unreliable across different environments.
+
+**Files affected:**
+
+- crates/backutil-daemon/src/manager.rs (modified)
+- crates/backutil-daemon/src/executor.rs (modified)
+- crates/backutil-daemon/tests/integration_test.rs (modified)
+
+**Testing notes:**
+
+- Verified `test_auto_prune_after_backup` passes 10/10 times in a loop.
+- Verified all workspace tests pass (excluding prompt-heavy setup tests).
+- Verified with `cargo fmt` and `cargo clippy`.
+
+---
+
 ## [2026-01-31] — daemon: implement automatic retention policy enforcement
 
 **What changed:**

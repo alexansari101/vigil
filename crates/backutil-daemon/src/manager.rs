@@ -532,48 +532,52 @@ impl JobManager {
                                     continue;
                                 }
                             }
-                            job.state = JobState::Idle;
-
-                            // Broadcast completion event
-                            let _ =
-                                event_tx.send(Response::Ok(Some(ResponseData::BackupComplete {
-                                    set_name: set_name.clone(),
-                                    snapshot_id: backup_result.snapshot_id.clone(),
-                                    added_bytes: backup_result.added_bytes,
-                                    duration_secs: backup_result.duration_secs,
-                                })));
-
                             metrics_target = Some(job.set.target.clone());
                         }
                     }
 
-                    // Trigger automatic pruning if retention policy exists
-                    {
+                    if let Some(target) = metrics_target {
+                        let manager_clone = manager.clone();
+                        let set_name_clone = set_name.clone();
+
+                        // Refresh status for this set and related sets deterministically
+                        // so that subsequent auto-prune or status requests see updated metrics.
+                        manager_clone.refresh_set_status(&set_name_clone).await;
+                        manager_clone
+                            .refresh_related_sets(&target, &set_name_clone)
+                            .await;
+
+                        {
+                            let mut jobs_lock = jobs.lock().await;
+                            if let Some(job) = jobs_lock.get_mut(&set_name) {
+                                job.state = JobState::Idle;
+                            }
+                        }
+
+                        // Broadcast completion event
+                        let _ = event_tx.send(Response::Ok(Some(ResponseData::BackupComplete {
+                            set_name: set_name.clone(),
+                            snapshot_id: backup_result.snapshot_id.clone(),
+                            added_bytes: backup_result.added_bytes,
+                            duration_secs: backup_result.duration_secs,
+                        })));
+
+                        // Now trigger automatic pruning if retention policy exists
                         let jobs_lock = jobs.lock().await;
                         if let Some(job) = jobs_lock.get(&set_name) {
                             let effective_set = manager.with_effective_retention(&job.set).await;
                             if effective_set.retention.is_some() {
-                                let manager_clone = manager.clone();
-                                let set_name_clone = set_name.clone();
+                                let manager_clone2 = manager.clone();
+                                let set_name_clone2 = set_name.clone();
                                 let event_tx_clone = event_tx.clone();
 
                                 tokio::spawn(async move {
-                                    manager_clone
-                                        .auto_prune_after_backup(&set_name_clone, event_tx_clone)
+                                    manager_clone2
+                                        .auto_prune_after_backup(&set_name_clone2, event_tx_clone)
                                         .await;
                                 });
                             }
                         }
-                    }
-
-                    if let Some(target) = metrics_target {
-                        let manager = manager.clone();
-                        let set_name_clone = set_name.clone();
-
-                        tokio::spawn(async move {
-                            manager.refresh_set_status(&set_name_clone).await;
-                            manager.refresh_related_sets(&target, &set_name_clone).await;
-                        });
                         break;
                     }
                 }
@@ -778,15 +782,10 @@ impl JobManager {
             .await?;
         info!("Pruned set {}: {} bytes reclaimed", set_name, reclaimed);
 
-        // Refresh metrics after prune
-        let target = effective_set.target.clone();
-        let manager = self.clone();
-        let set_name_clone = set_name.to_string();
-
-        tokio::spawn(async move {
-            manager.refresh_set_status(&set_name_clone).await;
-            manager.refresh_related_sets(&target, &set_name_clone).await;
-        });
+        // Refresh metrics after prune deterministically
+        self.refresh_set_status(set_name).await;
+        self.refresh_related_sets(&effective_set.target, set_name)
+            .await;
 
         Ok(reclaimed)
     }
@@ -867,8 +866,9 @@ impl JobManager {
             return;
         }
 
-        // Wait briefly to allow repository lock to be released from backup
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        // We no longer need to sleep here because we await the refresh_set_status
+        // in the backup path before calling this, ensuring the repo lock is released
+        // and metrics are up to date.
 
         if self.shutdown_token.is_cancelled() {
             return;
