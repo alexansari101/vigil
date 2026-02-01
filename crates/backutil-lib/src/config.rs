@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -137,9 +136,7 @@ fn expand_home(path: &str) -> String {
 /// Returns `ConfigError` if the file cannot be found, read, or parsed,
 /// or if validation fails.
 pub fn load_config() -> Result<Config, ConfigError> {
-    let path = std::env::var("BACKUTIL_CONFIG")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| crate::paths::config_path());
+    let path = crate::paths::active_config_path();
 
     if !path.exists() {
         return Err(ConfigError::Io(std::io::Error::new(

@@ -98,6 +98,8 @@ enum Commands {
         #[arg(long)]
         config_only: bool,
     },
+    /// Guided first-time setup
+    Setup,
 }
 
 #[derive(Subcommand)]
@@ -174,6 +176,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Check { set, config_only } => {
             handle_check(set, config_only, json, quiet).await?;
+        }
+        Commands::Setup => {
+            handle_setup(json, quiet).await?;
         }
         Commands::Tui => {
             println!("Command not yet implemented.");
@@ -1475,6 +1480,179 @@ async fn handle_list(json: bool, quiet: bool) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+async fn handle_setup(json: bool, quiet: bool) -> anyhow::Result<()> {
+    if !quiet && !json {
+        println!("🚀 Welcome to backutil Guided Setup!");
+        println!("This wizard will help you configure your first backup automated set.");
+        println!();
+    }
+
+    // 1. Password Check
+    let password_path = paths::password_path();
+    let has_password = password_path.exists();
+
+    if has_password {
+        if !quiet && !json {
+            println!("✔ Password file found at {:?}", password_path);
+        }
+    } else {
+        if !quiet && !json {
+            println!("🔑 Step 1: Create a repository password");
+            println!("This password will be used to encrypt all your repositories.");
+        }
+        let password = rpassword::prompt_password("Enter new repository password: ")?;
+        let confirm = rpassword::prompt_password("Confirm password: ")?;
+
+        if password != confirm {
+            anyhow::bail!("Passwords do not match.");
+        }
+
+        if let Some(parent) = password_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(&password_path, password)?;
+        std::fs::set_permissions(&password_path, std::fs::Permissions::from_mode(0o600))?;
+        if !quiet && !json {
+            println!("✔ Password saved to {:?}", password_path);
+        }
+    }
+
+    if !quiet && !json {
+        println!();
+    }
+
+    // 2. Configuration Check
+    let config_path = paths::active_config_path();
+    let has_config = config_path.exists();
+
+    if has_config {
+        if !quiet && !json {
+            println!("✔ Configuration found at {:?}", config_path);
+            if let Ok(config) = backutil_lib::config::load_config() {
+                println!("Existing backup sets:");
+                for set in config.backup_sets {
+                    println!(
+                        "  - {} ({} ⮕ {})",
+                        set.name,
+                        set.source.unwrap_or_else(|| "multi".to_string()),
+                        set.target
+                    );
+                }
+                println!();
+                println!("💡 Tip: To add more folders, use: backutil track <NAME> <SRC> <TGT>");
+                println!("   To start over, remove the config file and run setup again.");
+            }
+        }
+    } else {
+        if !quiet && !json {
+            println!("⚙ Step 2: Configure your first backup set");
+        }
+
+        let name = prompt_user("Name for this backup set (e.g. 'work'): ")?;
+        let source = prompt_user("Source folder to back up (e.g. '~/projects'): ")?;
+        let target = prompt_user("Backup destination (e.g. '/mnt/backup/projects'): ")?;
+
+        let source_expanded = expand_home(&source);
+
+        if !std::path::Path::new(&source_expanded).exists() {
+            println!("Warning: Source path '{}' does not exist.", source_expanded);
+        }
+
+        let config = backutil_lib::config::Config {
+            global: backutil_lib::config::GlobalConfig::default(),
+            backup_sets: vec![backutil_lib::config::BackupSet {
+                name: name.clone(),
+                source: Some(source),
+                sources: None,
+                target,
+                exclude: None,
+                debounce_seconds: None,
+                retention: None,
+            }],
+        };
+
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let toml_content = toml::to_string_pretty(&config)?;
+        std::fs::write(&config_path, toml_content)?;
+
+        if !quiet && !json {
+            println!("✔ Generated config.toml at {:?}", config_path);
+            println!();
+
+            let init_now =
+                confirm_prompt("Would you like to initialize the restic repository now?")?;
+            if init_now {
+                handle_init(Some(name), json, quiet).await?;
+            }
+        }
+    }
+
+    if !quiet && !json {
+        println!();
+    }
+
+    // 3. Service Status
+    let unit_path = paths::systemd_unit_path();
+    let is_installed = unit_path.exists();
+
+    if is_installed {
+        if !quiet && !json {
+            println!("✔ Background service is installed at {:?}", unit_path);
+        }
+    } else if !quiet && !json {
+        println!("🤖 Step 3: Service Installation");
+        let install_now = confirm_prompt("Would you like to install the background service now?")?;
+        if install_now {
+            handle_bootstrap(json, quiet).await?;
+        }
+    }
+
+    if !quiet && !json {
+        println!();
+        println!("✨ Setup complete! All systems GO.");
+    } else if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "status": "complete",
+                "password_exists": has_password,
+                "config_exists": has_config,
+                "service_installed": is_installed
+            })
+        );
+    }
+
+    Ok(())
+}
+
+fn prompt_user(msg: &str) -> anyhow::Result<String> {
+    use std::io::Write;
+    print!("{}", msg);
+    std::io::stdout().flush()?;
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    Ok(input.trim().to_string())
+}
+
+fn confirm_prompt(msg: &str) -> anyhow::Result<bool> {
+    let response = prompt_user(&format!("{} [Y/n]: ", msg))?;
+    Ok(response.to_lowercase() != "n")
+}
+
+fn expand_home(path: &str) -> String {
+    if path.starts_with("~/") {
+        if let Some(home) = directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()) {
+            return path.replacen("~", &home.to_string_lossy(), 1);
+        }
+    }
+    path.to_string()
 }
 
 async fn connect_to_daemon() -> anyhow::Result<UnixStream> {

@@ -8,6 +8,33 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-31] — cli: implement guided onboarding (`backutil setup`)
+
+**What changed:**
+
+- Implemented an interactive setup wizard that guides new users through creating a repository password and their first backup set.
+- Developed an idempotent logic that detects existing configuration and safely redirects users to management commands (e.g., `track`) instead of overwriting files.
+- Added path validation and home directory expansion (`~/`) for source and target paths during setup.
+- Developed integration tests covering idempotent and partial setup scenarios.
+- Unified configuration path handling across the library and CLI by exposing `active_config_path()`.
+
+**Why:**
+
+- Implements FR5 (Setup Wizard) to improve first-time user experience and simplify system provisioning.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+- crates/backutil-lib/src/paths.rs (modified)
+- crates/backutil-lib/src/config.rs (modified)
+- crates/backutil/Cargo.toml (modified)
+- crates/backutil/tests/cli_setup_test.rs (new)
+
+**Testing notes:**
+
+- Verified `test_cli_setup_idempotent` and `test_cli_setup_partial` integration tests pass.
+- Manually verified the welcome flow and path validation warnings.
+
 ## [2026-01-31] 744e025 — cli: group service-related commands under `service` subcommand
 
 **What changed:**

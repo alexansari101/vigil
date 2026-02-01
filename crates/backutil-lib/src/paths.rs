@@ -31,6 +31,13 @@ pub fn password_path() -> PathBuf {
     config_dir().join(".repo_password")
 }
 
+/// Returns the active configuration path, respecting `BACKUTIL_CONFIG` environment variable.
+pub fn active_config_path() -> PathBuf {
+    std::env::var("BACKUTIL_CONFIG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| config_path())
+}
+
 /// Returns the log file path: `~/.local/share/backutil/backutil.log`
 pub fn log_path() -> PathBuf {
     project_dirs()

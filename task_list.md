@@ -160,19 +160,6 @@ Write user-facing README with installation, quick start, and configuration examp
 
 ---
 
-### 48. [ ] Guided Onboarding: `backutil setup`
-
-Implement an interactive wizard for first-time configuration.
-
-**Acceptance criteria:**
-
-- Interactive prompts for name, source folder, and backup destination.
-- Prompts for global repository password and saves it to `.repo_password`.
-- Validates paths exist and are accessible.
-- Generates `config.toml` automatically.
-- Offers to run `init` and `service install` as final steps.
-- `[BLOCKED BY: #47]`
-
 ### 49. [ ] Config Management: `track` and `untrack`
 
 Implement CLI commands to add/remove sets from the configuration file.
@@ -239,3 +226,4 @@ Make the `status` command useful even when the daemon is not running.
 | 45 | Fix log selection logic to prefer most recent file by mtime | `0292cf4` | 2026-01-30 |
 | 46 | Sync mount status on daemon restart | `2e0f85d` | 2026-01-31 |
 | 47 | Command Grouping: `service` subcommand | `744e025` | 2026-01-31 |
+| 48 | Guided Onboarding: `backutil setup` | `fe2bab2` | 2026-01-31 |
