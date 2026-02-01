@@ -8,7 +8,7 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
-## [2026-01-31] — cli: implement guided onboarding (`backutil setup`)
+## [2026-01-31] d819fdd — cli: implement guided onboarding (`backutil setup`)
 
 **What changed:**
 

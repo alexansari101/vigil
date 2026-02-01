@@ -119,7 +119,7 @@ impl Config {
     }
 }
 
-fn expand_home(path: &str) -> String {
+pub fn expand_home(path: &str) -> String {
     if path.starts_with("~/") {
         if let Some(home) = directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()) {
             return path.replacen("~", &home.to_string_lossy(), 1);

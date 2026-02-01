@@ -1485,7 +1485,7 @@ async fn handle_list(json: bool, quiet: bool) -> anyhow::Result<()> {
 async fn handle_setup(json: bool, quiet: bool) -> anyhow::Result<()> {
     if !quiet && !json {
         println!("🚀 Welcome to backutil Guided Setup!");
-        println!("This wizard will help you configure your first backup automated set.");
+        println!("This wizard will help you configure your first automated backup set.");
         println!();
     }
 
@@ -1497,12 +1497,15 @@ async fn handle_setup(json: bool, quiet: bool) -> anyhow::Result<()> {
         if !quiet && !json {
             println!("✔ Password file found at {:?}", password_path);
         }
-    } else {
-        if !quiet && !json {
+    } else if !json {
+        if !quiet {
             println!("🔑 Step 1: Create a repository password");
             println!("This password will be used to encrypt all your repositories.");
         }
         let password = rpassword::prompt_password("Enter new repository password: ")?;
+        if password.is_empty() {
+            anyhow::bail!("Password cannot be empty.");
+        }
         let confirm = rpassword::prompt_password("Confirm password: ")?;
 
         if password != confirm {
@@ -1513,10 +1516,15 @@ async fn handle_setup(json: bool, quiet: bool) -> anyhow::Result<()> {
             std::fs::create_dir_all(parent)?;
         }
 
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::write(&password_path, password)?;
-        std::fs::set_permissions(&password_path, std::fs::Permissions::from_mode(0o600))?;
-        if !quiet && !json {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&password_path)?;
+        file.write_all(password.as_bytes())?;
+        if !quiet {
             println!("✔ Password saved to {:?}", password_path);
         }
     }
@@ -1547,18 +1555,27 @@ async fn handle_setup(json: bool, quiet: bool) -> anyhow::Result<()> {
                 println!("   To start over, remove the config file and run setup again.");
             }
         }
-    } else {
-        if !quiet && !json {
+    } else if !json {
+        if !quiet {
             println!("⚙ Step 2: Configure your first backup set");
         }
 
         let name = prompt_user("Name for this backup set (e.g. 'work'): ")?;
+        if name.is_empty() {
+            anyhow::bail!("Backup set name cannot be empty.");
+        }
         let source = prompt_user("Source folder to back up (e.g. '~/projects'): ")?;
+        if source.is_empty() {
+            anyhow::bail!("Source path cannot be empty.");
+        }
         let target = prompt_user("Backup destination (e.g. '/mnt/backup/projects'): ")?;
+        if target.is_empty() {
+            anyhow::bail!("Target path cannot be empty.");
+        }
 
-        let source_expanded = expand_home(&source);
+        let source_expanded = backutil_lib::config::expand_home(&source);
 
-        if !std::path::Path::new(&source_expanded).exists() {
+        if !quiet && !std::path::Path::new(&source_expanded).exists() {
             println!("Warning: Source path '{}' does not exist.", source_expanded);
         }
 
@@ -1582,7 +1599,7 @@ async fn handle_setup(json: bool, quiet: bool) -> anyhow::Result<()> {
         let toml_content = toml::to_string_pretty(&config)?;
         std::fs::write(&config_path, toml_content)?;
 
-        if !quiet && !json {
+        if !quiet {
             println!("✔ Generated config.toml at {:?}", config_path);
             println!();
 
@@ -1644,15 +1661,6 @@ fn prompt_user(msg: &str) -> anyhow::Result<String> {
 fn confirm_prompt(msg: &str) -> anyhow::Result<bool> {
     let response = prompt_user(&format!("{} [Y/n]: ", msg))?;
     Ok(response.to_lowercase() != "n")
-}
-
-fn expand_home(path: &str) -> String {
-    if path.starts_with("~/") {
-        if let Some(home) = directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf()) {
-            return path.replacen("~", &home.to_string_lossy(), 1);
-        }
-    }
-    path.to_string()
 }
 
 async fn connect_to_daemon() -> anyhow::Result<UnixStream> {
