@@ -21,6 +21,49 @@ pub struct Config {
     pub backup_sets: Vec<BackupSet>,
 }
 
+impl Config {
+    /// Validates the configuration structure (unique names, mutually exclusive source fields).
+    pub fn check_validity(&self) -> Result<(), ConfigError> {
+        let mut names = HashSet::new();
+        for set in &self.backup_sets {
+            if !names.insert(set.name.clone()) {
+                return Err(ConfigError::Validation(format!(
+                    "Duplicate backup set name: {}",
+                    set.name
+                )));
+            }
+
+            if set.source.is_some() && set.sources.is_some() {
+                return Err(ConfigError::Validation(format!(
+                    "Set '{}' cannot have both 'source' and 'sources'",
+                    set.name
+                )));
+            }
+
+            if set.source.is_none() && set.sources.is_none() {
+                return Err(ConfigError::Validation(format!(
+                    "Set '{}' must have either 'source' or 'sources'",
+                    set.name
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Expands `~/` in source and target paths for all backup sets.
+    pub fn expand_home_paths(&mut self) {
+        for set in &mut self.backup_sets {
+            if let Some(ref s) = set.source {
+                set.source = Some(expand_home(s));
+            }
+            if let Some(ref ss) = set.sources {
+                set.sources = Some(ss.iter().map(|s| expand_home(s)).collect());
+            }
+            set.target = expand_home(&set.target);
+        }
+    }
+}
+
 /// Global configuration settings.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GlobalConfig {
@@ -80,41 +123,10 @@ pub struct RetentionPolicy {
 }
 
 impl Config {
-    /// Validates the configuration, ensuring unique names and mutually exclusive source fields.
-    /// Also expands `~/` in source and target paths.
+    /// Validates and expands paths.
     pub fn validate(&mut self) -> Result<(), ConfigError> {
-        let mut names = HashSet::new();
-        for set in &mut self.backup_sets {
-            if !names.insert(set.name.clone()) {
-                return Err(ConfigError::Validation(format!(
-                    "Duplicate backup set name: {}",
-                    set.name
-                )));
-            }
-
-            if set.source.is_some() && set.sources.is_some() {
-                return Err(ConfigError::Validation(format!(
-                    "Set '{}' cannot have both 'source' and 'sources'",
-                    set.name
-                )));
-            }
-
-            if set.source.is_none() && set.sources.is_none() {
-                return Err(ConfigError::Validation(format!(
-                    "Set '{}' must have either 'source' or 'sources'",
-                    set.name
-                )));
-            }
-
-            // Expand paths
-            if let Some(ref s) = set.source {
-                set.source = Some(expand_home(s));
-            }
-            if let Some(ref ss) = set.sources {
-                set.sources = Some(ss.iter().map(|s| expand_home(s)).collect());
-            }
-            set.target = expand_home(&set.target);
-        }
+        self.check_validity()?;
+        self.expand_home_paths();
         Ok(())
     }
 }
@@ -136,6 +148,13 @@ pub fn expand_home(path: &str) -> String {
 /// Returns `ConfigError` if the file cannot be found, read, or parsed,
 /// or if validation fails.
 pub fn load_config() -> Result<Config, ConfigError> {
+    let mut config = load_config_raw()?;
+    config.validate()?;
+    Ok(config)
+}
+
+/// Loads the configuration without expansion or validation.
+pub fn load_config_raw() -> Result<Config, ConfigError> {
     let path = crate::paths::active_config_path();
 
     if !path.exists() {
@@ -146,9 +165,23 @@ pub fn load_config() -> Result<Config, ConfigError> {
     }
 
     let content = std::fs::read_to_string(path)?;
-    let mut config: Config = toml::from_str(&content)?;
-    config.validate()?;
+    let config: Config = toml::from_str(&content)?;
     Ok(config)
+}
+
+/// Saves the configuration to the active config path.
+pub fn save_config(config: &Config) -> Result<(), ConfigError> {
+    let path = crate::paths::active_config_path();
+
+    // Create parent directory if it doesn't exist
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let content = toml::to_string_pretty(config)
+        .map_err(|e| ConfigError::Validation(format!("Failed to serialize config: {}", e)))?;
+    std::fs::write(path, content)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -282,5 +315,31 @@ target = "/tmp/backup2"
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"name\":\"test\""));
         assert!(json.contains("\"target\":\"~/backup\""));
+    }
+    #[test]
+    fn test_save_and_load_raw() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_path = temp.path().join("config.toml");
+        std::env::set_var("BACKUTIL_CONFIG", &config_path);
+
+        let config = Config {
+            global: GlobalConfig::default(),
+            backup_sets: vec![BackupSet {
+                name: "test".to_string(),
+                source: Some("/src".to_string()),
+                sources: None,
+                target: "/repo".to_string(),
+                exclude: None,
+                debounce_seconds: None,
+                retention: None,
+            }],
+        };
+
+        save_config(&config).unwrap();
+        assert!(config_path.exists());
+
+        let loaded = load_config_raw().unwrap();
+        assert_eq!(loaded.backup_sets.len(), 1);
+        assert_eq!(loaded.backup_sets[0].name, "test");
     }
 }

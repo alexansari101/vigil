@@ -100,6 +100,23 @@ enum Commands {
     },
     /// Guided first-time setup
     Setup,
+    /// Add a new backup set to the configuration
+    Track {
+        /// Unique name for the backup set
+        name: String,
+        /// Source directory to back up
+        source: String,
+        /// Restic repository target path
+        target: String,
+    },
+    /// Remove a backup set from the configuration
+    Untrack {
+        /// Name of the backup set to remove
+        name: String,
+        /// Also permanently delete the repository data
+        #[arg(long)]
+        purge: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -180,6 +197,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::Setup => {
             handle_setup(json, quiet).await?;
         }
+        Commands::Track {
+            name,
+            source,
+            target,
+        } => handle_track(name, source, target, json, quiet).await?,
+        Commands::Untrack { name, purge } => handle_untrack(name, purge, json, quiet).await?,
         Commands::Tui => {
             println!("Command not yet implemented.");
         }
@@ -1220,6 +1243,7 @@ async fn handle_purge(
                     anyhow::bail!("Purge requires --force when running in --json or --quiet mode");
                 }
                 println!("Backup set '{}' is still present in config.toml. Remove it first or use --force.", set_name);
+                return Ok(()); // Exit gracefully if not forced and set is in config
             }
             target_path = Some(set.target.clone());
         }
@@ -1780,6 +1804,137 @@ fn format_human_duration(duration: Duration) -> String {
             format!("{} days ago", days)
         }
     }
+}
+
+async fn handle_track(
+    name: String,
+    source: String,
+    target: String,
+    json: bool,
+    quiet: bool,
+) -> anyhow::Result<()> {
+    use backutil_lib::config::{load_config_raw, save_config, BackupSet};
+
+    if !quiet && !json {
+        println!("Tracking new backup set '{}'...", name);
+    }
+
+    let mut config = match load_config_raw() {
+        Ok(c) => c,
+        Err(_) => {
+            // If config doesn't exist, create a new one
+            use backutil_lib::config::{Config, GlobalConfig};
+            Config {
+                global: GlobalConfig::default(),
+                backup_sets: Vec::new(),
+            }
+        }
+    };
+
+    if config.backup_sets.iter().any(|s| s.name == name) {
+        return Err(anyhow!("Backup set '{}' already exists", name));
+    }
+
+    config.backup_sets.push(BackupSet {
+        name: name.clone(),
+        source: Some(source),
+        sources: None,
+        target,
+        exclude: None,
+        debounce_seconds: None,
+        retention: None,
+    });
+
+    save_config(&config).context("Failed to save configuration")?;
+
+    if !quiet && !json {
+        println!("Config updated. Initializing repository...");
+    }
+
+    // Initialize the repository
+    handle_init(Some(name.clone()), json, quiet).await?;
+
+    if !quiet && !json {
+        println!("Reloading service...");
+    }
+
+    // Reload the daemon
+    match handle_reload(json, true).await {
+        Ok(_) => {
+            if !quiet && !json {
+                println!("Service reloaded successfully.");
+            }
+        }
+        Err(_) => {
+            if !quiet && !json {
+                println!("Note: Daemon not running, skip reload.");
+            }
+        }
+    }
+
+    if !quiet && !json {
+        println!("Successfully tracking '{}'.", name);
+    } else if json {
+        println!(r#"{{"status":"ok","set":"{}"}}"#, name);
+    }
+
+    Ok(())
+}
+
+async fn handle_untrack(name: String, purge: bool, json: bool, quiet: bool) -> anyhow::Result<()> {
+    use backutil_lib::config::{load_config_raw, save_config};
+
+    if !quiet && !json {
+        println!("Untracking backup set '{}'...", name);
+    }
+
+    let mut config = load_config_raw().context("Failed to load configuration")?;
+
+    let set_index = config
+        .backup_sets
+        .iter()
+        .position(|s| s.name == name)
+        .ok_or_else(|| anyhow!("Backup set '{}' not found", name))?;
+
+    if purge {
+        if !quiet && !json {
+            println!(
+                "Purging repository data for '{}' before untracking...",
+                name
+            );
+        }
+        // Use force=true because it's still in config
+        handle_purge(name.clone(), true, json, quiet).await?;
+    }
+
+    config.backup_sets.remove(set_index);
+    save_config(&config).context("Failed to save configuration")?;
+
+    if !quiet && !json {
+        println!("Config updated. Reloading service...");
+    }
+
+    // Reload the daemon
+    match handle_reload(json, true).await {
+        Ok(_) => {
+            if !quiet && !json {
+                println!("Service reloaded successfully.");
+            }
+        }
+        Err(_) => {
+            if !quiet && !json {
+                println!("Note: Daemon not running, skip reload.");
+            }
+        }
+    }
+
+    if !quiet && !json {
+        println!("Successfully untracked '{}'.", name);
+    } else if json {
+        println!(r#"{{"status":"ok","untracked":"{}"}}"#, name);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

@@ -8,6 +8,32 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-01-31] — cli: implement `track` and `untrack` commands
+
+**What changed:**
+
+- Added `backutil track <NAME> <SOURCE> <TARGET>` command to add new backup sets to the configuration automatically.
+- Added `backutil untrack <NAME> [--purge]` command to remove backup sets from the configuration.
+- Enhanced `backutil-lib` with programmatic configuration management: `save_config`, `load_config_raw`, and refactored validation.
+- Integrated `track` and `untrack` with service reloading (`ReloadConfig` IPC) to ensure the daemon picks up changes immediately.
+- Improved `untrack --purge` logic to safely collect the repository path and delete it before removing the set from configuration.
+
+**Why:**
+
+- Implements FR5 (Setup Wizard, track/untrack) to allow managing backup sets via the CLI instead of manual config editing.
+
+**Files affected:**
+
+- crates/backutil/src/main.rs (modified)
+- crates/backutil-lib/src/config.rs (modified)
+
+**Testing notes:**
+
+- Verified `track` correctly updates `config.toml`, initializes the Restic repo, and reloads the service.
+- Verified `untrack` correctly removes the set and reloads the service.
+- Verified `untrack --purge` successfully deletes the repository data.
+- Unit tests added in `backutil-lib` for config management helpers.
+
 ## [2026-01-31] d819fdd — cli: implement guided onboarding (`backutil setup`)
 
 **What changed:**
