@@ -45,7 +45,7 @@ Run the wizard to configure your first backup set, set your repository password,
 vigil setup
 ```
 
-From there, you can add additional backup sets effortlessly:
+From there, you can add additional backup sets effortlessly. The following will back up the `~/documents` folder and create an encrypted backup repository at`/mnt/backups/work`:
 
 ```bash
 vigil track "work-docs" ~/documents /mnt/backups/work
@@ -64,6 +64,8 @@ vigil status
 ```
 
 > 💡 **Note:** The service daemon watches files/folders for changes and includes a "debounce" period to prevent multiple backups from being triggered in quick succession.
+
+See the next section for how to mount and browse your backups as standard folders.
 
 ---
 
