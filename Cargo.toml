@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/backutil-lib",
-    "crates/backutil-daemon",
-    "crates/backutil",
+    "crates/vigil-lib",
+    "crates/vigil-daemon",
+    "crates/vigil",
 ]
 
 [workspace.dependencies]

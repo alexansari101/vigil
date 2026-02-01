@@ -34,8 +34,8 @@ The goal is to transition to an automated, event-driven system that triggers enc
 
 ### FR3: Snapshot Management, Space Recovery, & Monitoring
 
-* **Browsing:** Support mounting backup snapshots as a virtual file system (FUSE) to allow standard CLI tools (`ls`, `cp`) to browse and restore specific files. Default mount point: `~/.local/share/backutil/mnt/<set-name>/`.
-* **Unmounting:** `backutil unmount [SET]` cleanly unmounts FUSE mounts (one set or all if omitted). The TUI should also warn if mounts are active on exit.
+* **Browsing:** Support mounting backup snapshots as a virtual file system (FUSE) to allow standard CLI tools (`ls`, `cp`) to browse and restore specific files. Default mount point: `~/.local/share/vigil/mnt/<set-name>/`.
+* **Unmounting:** `vigil unmount [SET]` cleanly unmounts FUSE mounts (one set or all if omitted). The TUI should also warn if mounts are active on exit.
 * **Automated Retention:** Automatically prune old snapshots based on a configurable policy (default: keep last 10). Run after each successful backup.
 * **Manual Management:** Provide a CLI wrapper to:
   * **Trigger:** Manually start a backup run immediately for one or all backup sets.
@@ -48,41 +48,41 @@ The goal is to transition to an automated, event-driven system that triggers enc
 
 ### FR5: Automated Onboarding & Service Management
 
-* **Setup Wizard:** Provide a guided `backutil setup` command that creates the initial configuration and password file interactively.
+* **Setup Wizard:** Provide a guided `vigil setup` command that creates the initial configuration and password file interactively.
 * **Track/Untrack:** Provide CLI commands to add (`track`) or remove (`untrack`) backup sets without manual configuration editing.
 * **Service Provisioning:** Group all service-related tasks under a `service` subcommand.
 * **Dependency Check:** Verify and alert the user if required binaries (`restic`, `fusermount3`, `notify-send`) are missing.
 * **Service Control:**
-  * `backutil service install` — Provision systemd units and start daemon.
-  * `backutil service stop` — Stop and disable systemd units without removing config.
-  * `backutil service reload` — Trigger daemon to reload configuration.
-  * `backutil service uninstall` — Stop and remove systemd units.
+  * `vigil service install` — Provision systemd units and start daemon.
+  * `vigil service stop` — Stop and disable systemd units without removing config.
+  * `vigil service reload` — Trigger daemon to reload configuration.
+  * `vigil service uninstall` — Stop and remove systemd units.
 
 ### FR5.1: CLI Subcommand Structure
 
 ```bash
 # Core Operations
-backutil setup                  # Guided first-time setup
-backutil track <NAME> <SRC> <TGT> # Add new backup set
-backutil untrack <NAME> [--purge] # Remove backup set
-backutil init [SET]               # Initialize Restic repository
-backutil backup [SET]             # Run backup now
-backutil status                   # Show health summary (works offline)
-backutil snapshots <SET>          # List snapshots
-backutil list                     # List configured sets
-backutil check [SET]              # Validate config/connectivity
-backutil mount <SET> [ID]         # Mount repository (navigates to ID if provided)
-backutil unmount [SET]            # Unmount active FUSE mounts
-backutil prune [SET]              # Trigger retention cleanup
-backutil purge <SET>              # Permanently delete repository data
-backutil logs [-f]                # Tail the log file
-backutil tui                      # Launch interactive dashboard
+vigil setup                  # Guided first-time setup
+vigil track <NAME> <SRC> <TGT> # Add new backup set
+vigil untrack <NAME> [--purge] # Remove backup set
+vigil init [SET]               # Initialize Restic repository
+vigil backup [SET]             # Run backup now
+vigil status                   # Show health summary (works offline)
+vigil snapshots <SET>          # List snapshots
+vigil list                     # List configured sets
+vigil check [SET]              # Validate config/connectivity
+vigil mount <SET> [ID]         # Mount repository (navigates to ID if provided)
+vigil unmount [SET]            # Unmount active FUSE mounts
+vigil prune [SET]              # Trigger retention cleanup
+vigil purge <SET>              # Permanently delete repository data
+vigil logs [-f]                # Tail the log file
+vigil tui                      # Launch interactive dashboard
 
 # Service Management
-backutil service install          # Generate and enable systemd units
-backutil service stop             # Stop and disable systemd units
-backutil service reload           # Reload daemon configuration
-backutil service uninstall [--purge] # Remove systemd units; --purge deletes configs
+vigil service install          # Generate and enable systemd units
+vigil service stop             # Stop and disable systemd units
+vigil service reload           # Reload daemon configuration
+vigil service uninstall [--purge] # Remove systemd units; --purge deletes configs
 ```
 
 ### FR5.2: CLI Output Quality
@@ -121,11 +121,11 @@ backutil service uninstall [--purge] # Remove systemd units; --purge deletes con
 | Backup Engine | Restic |
 | Language | Rust |
 | Config Format | TOML |
-| Config Location | `~/.config/backutil/config.toml` (overridable via `--config` flag or `BACKUTIL_CONFIG` env var) |
-| Password Storage | `~/.config/backutil/.repo_password` with `chmod 600`; one global password per repository |
+| Config Location | `~/.config/vigil/config.toml` (overridable via `--config` flag or `VIGIL_CONFIG` env var) |
+| Password Storage | `~/.config/vigil/.repo_password` with `chmod 600`; one global password per repository |
 | File Watching | inotify-based daemon (via `notify` crate) for fine-grained detection and debouncing |
-| Architecture | Separate background service (`backutil-daemon`) with TUI/CLI as client; communicates via Unix socket |
-| Failure Alerts | Desktop notification (via `notify-send`) + append to `~/.local/share/backutil/backutil.log` |
+| Architecture | Separate background service (`vigil-daemon`) with TUI/CLI as client; communicates via Unix socket |
+| Failure Alerts | Desktop notification (via `notify-send`) + append to `~/.local/share/vigil/vigil.log` |
 | Default Retention | `--keep-last 10` |
 
 ## 5. Success Criteria

@@ -1,6 +1,6 @@
 # Developer Guidelines for Subagents
 
-This document defines development practices, cleanup requirements, and coordination patterns for agents working on `backutil`.
+This document defines development practices, cleanup requirements, and coordination patterns for agents working on `vigil`.
 
 ## 0. Subagent Workflow
 
@@ -44,39 +44,39 @@ Before completing any development or testing task, ensure the system is left in 
 **Systemd units:**
 
 ```bash
-systemctl --user stop backutil-daemon.service
-systemctl --user disable backutil-daemon.service
-rm -f ~/.config/systemd/user/backutil-daemon.service
+systemctl --user stop vigil-daemon.service
+systemctl --user disable vigil-daemon.service
+rm -f ~/.config/systemd/user/vigil-daemon.service
 systemctl --user daemon-reload
 ```
 
 **FUSE mounts (if any are active):**
 
 ```bash
-fusermount -u ~/.local/share/backutil/mnt/<set-name>
+fusermount -u ~/.local/share/vigil/mnt/<set-name>
 # Or unmount all:
-for mnt in ~/.local/share/backutil/mnt/*/; do fusermount -u "$mnt" 2>/dev/null; done
+for mnt in ~/.local/share/vigil/mnt/*/; do fusermount -u "$mnt" 2>/dev/null; done
 ```
 
 **Config and data files:**
 
 ```bash
-rm -rf ~/.config/backutil          # Config + password file
-rm -rf ~/.local/share/backutil     # Logs + mount points
+rm -rf ~/.config/vigil          # Config + password file
+rm -rf ~/.local/share/vigil     # Logs + mount points
 ```
 
 **Runtime files:**
 
 ```bash
-rm -f ${XDG_RUNTIME_DIR:-/tmp}/backutil.sock
-rm -f ${XDG_RUNTIME_DIR:-/tmp}/backutil.pid
+rm -f ${XDG_RUNTIME_DIR:-/tmp}/vigil.sock
+rm -f ${XDG_RUNTIME_DIR:-/tmp}/vigil.pid
 ```
 
 **Installed binaries:**
 
 ```bash
-rm -f ~/.cargo/bin/backutil
-rm -f ~/.cargo/bin/backutil-daemon
+rm -f ~/.cargo/bin/vigil
+rm -f ~/.cargo/bin/vigil-daemon
 ```
 
 ## 2. Coding Standards
@@ -119,17 +119,17 @@ Each crate has a clear responsibility. Do not blur these boundaries:
 
 | Crate | Responsibility | Does NOT do |
 |-------|----------------|-------------|
-| `backutil-lib` | Config parsing, types, IPC message definitions | Spawning processes, filesystem watching, UI |
-| `backutil-daemon` | File watching, restic execution, IPC server | User interaction, config validation beyond parsing |
-| `backutil` | CLI parsing, TUI rendering, IPC client | Direct restic calls, file watching |
+| `vigil-lib` | Config parsing, types, IPC message definitions | Spawning processes, filesystem watching, UI |
+| `vigil-daemon` | File watching, restic execution, IPC server | User interaction, config validation beyond parsing |
+| `vigil` | CLI parsing, TUI rendering, IPC client | Direct restic calls, file watching |
 
-**Shared code goes in `backutil-lib`.** If both the CLI and daemon need it, it belongs in the library.
+**Shared code goes in `vigil-lib`.** If both the CLI and daemon need it, it belongs in the library.
 
 ## 4. Testing During Development
 
 When testing features that interact with the system:
 
-1. **Use a test config location:** `BACKUTIL_CONFIG=/tmp/test-backutil/config.toml`
+1. **Use a test config location:** `VIGIL_CONFIG=/tmp/test-vigil/config.toml`
 2. **Use a temporary repository:** Create a temp dir for the Restic repo target
 3. **Do not install systemd units** unless specifically testing bootstrap functionality
 4. **Clean up after tests:** Remove temp dirs, stop any spawned daemon processes
@@ -138,7 +138,7 @@ When testing features that interact with the system:
 
 When implementing features that span multiple crates:
 
-1. **Define the interface in `backutil-lib` first** (IPC messages, types)
+1. **Define the interface in `vigil-lib` first** (IPC messages, types)
 2. **Implement the daemon handler** for the new message
 3. **Implement the CLI/TUI caller** last
 4. **Update spec.md** if adding new IPC messages or types
@@ -149,8 +149,8 @@ Security-sensitive files must have correct permissions:
 
 | File | Permissions | Notes |
 |------|-------------|-------|
-| `~/.config/backutil/.repo_password` | `600` | Must be set on creation |
-| `~/.config/backutil/config.toml` | `644` | Readable, no secrets |
+| `~/.config/vigil/.repo_password` | `600` | Must be set on creation |
+| `~/.config/vigil/config.toml` | `644` | Readable, no secrets |
 | Unix socket | `700` | Handled by runtime |
 
 When creating the password file programmatically:
@@ -181,7 +181,7 @@ Before marking a task complete:
 - [ ] `cargo fmt` passes
 - [ ] `cargo clippy` has no warnings
 - [ ] `cargo test` passes
-- [ ] If modifying daemon code: `cargo test -p backutil-daemon -- --ignored --test-threads=1` passes (requires restic)
+- [ ] If modifying daemon code: `cargo test -p vigil-daemon -- --ignored --test-threads=1` passes (requires restic)
 - [ ] New features have corresponding tests
 - [ ] Manual verification of new feature completed
 - [ ] Manual verification of existing features (regression) completed
@@ -233,8 +233,8 @@ The `changelog.md` file provides context for subagents about recent changes. **R
 - Required foundation for daemon and CLI components
 
 **Files affected:**
-- crates/backutil-lib/src/config.rs (new)
-- crates/backutil-lib/src/lib.rs (updated exports)
+- crates/vigil-lib/src/config.rs (new)
+- crates/vigil-lib/src/lib.rs (updated exports)
 
 **Testing notes:**
 - Unit tests for valid config parsing

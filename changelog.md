@@ -22,7 +22,7 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **Files affected:**
 
-- crates/backutil-daemon/tests/integration_test.rs (modified)
+- crates/vigil-daemon/tests/integration_test.rs (modified)
 
 **Testing notes:**
 
@@ -51,9 +51,9 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **Files affected:**
 
-- crates/backutil-daemon/src/manager.rs (modified)
-- crates/backutil-daemon/src/executor.rs (modified)
-- crates/backutil-daemon/tests/integration_test.rs (modified)
+- crates/vigil-daemon/src/manager.rs (modified)
+- crates/vigil-daemon/src/executor.rs (modified)
+- crates/vigil-daemon/tests/integration_test.rs (modified)
 
 **Testing notes:**
 
@@ -76,15 +76,15 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **Why:**
 
-- Previously, retention policies were only enforced via manual `backutil prune` command, requiring user intervention.
+- Previously, retention policies were only enforced via manual `vigil prune` command, requiring user intervention.
 - Automatic enforcement ensures repositories stay within configured limits without manual maintenance.
 - Improves the "set-it-and-forget-it" automation goal of the project.
 
 **Files affected:**
 
-- crates/backutil-daemon/src/manager.rs (modified)
-- crates/backutil-lib/src/ipc.rs (modified)
-- crates/backutil-daemon/tests/integration_test.rs (modified)
+- crates/vigil-daemon/src/manager.rs (modified)
+- crates/vigil-lib/src/ipc.rs (modified)
+- crates/vigil-daemon/tests/integration_test.rs (modified)
 
 **Testing notes:**
 
@@ -99,9 +99,9 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **What changed:**
 
-- Added `backutil track <NAME> <SOURCE> <TARGET>` command to add new backup sets to the configuration automatically.
-- Added `backutil untrack <NAME> [--purge]` command to remove backup sets from the configuration.
-- Enhanced `backutil-lib` with programmatic configuration management: `save_config`, `load_config_raw`, and refactored validation.
+- Added `vigil track <NAME> <SOURCE> <TARGET>` command to add new backup sets to the configuration automatically.
+- Added `vigil untrack <NAME> [--purge]` command to remove backup sets from the configuration.
+- Enhanced `vigil-lib` with programmatic configuration management: `save_config`, `load_config_raw`, and refactored validation.
 - Integrated `track` and `untrack` with service reloading (`ReloadConfig` IPC) to ensure the daemon picks up changes immediately.
 - Improved `untrack --purge` logic to safely collect the repository path and delete it before removing the set from configuration.
 
@@ -111,17 +111,17 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **Files affected:**
 
-- crates/backutil/src/main.rs (modified)
-- crates/backutil-lib/src/config.rs (modified)
+- crates/vigil/src/main.rs (modified)
+- crates/vigil-lib/src/config.rs (modified)
 
 **Testing notes:**
 
 - Verified `track` correctly updates `config.toml`, initializes the Restic repo, and reloads the service.
 - Verified `untrack` correctly removes the set and reloads the service.
 - Verified `untrack --purge` successfully deletes the repository data.
-- Unit tests added in `backutil-lib` for config management helpers.
+- Unit tests added in `vigil-lib` for config management helpers.
 
-## [2026-01-31] d819fdd — cli: implement guided onboarding (`backutil setup`)
+## [2026-01-31] d819fdd — cli: implement guided onboarding (`vigil setup`)
 
 **What changed:**
 
@@ -137,11 +137,11 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **Files affected:**
 
-- crates/backutil/src/main.rs (modified)
-- crates/backutil-lib/src/paths.rs (modified)
-- crates/backutil-lib/src/config.rs (modified)
-- crates/backutil/Cargo.toml (modified)
-- crates/backutil/tests/cli_setup_test.rs (new)
+- crates/vigil/src/main.rs (modified)
+- crates/vigil-lib/src/paths.rs (modified)
+- crates/vigil-lib/src/config.rs (modified)
+- crates/vigil/Cargo.toml (modified)
+- crates/vigil/tests/cli_setup_test.rs (new)
 
 **Testing notes:**
 
@@ -168,8 +168,8 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **Files affected:**
 
-- crates/backutil/src/main.rs (modified)
-- crates/backutil/tests/cli_systemd_test.rs (modified)
+- crates/vigil/src/main.rs (modified)
+- crates/vigil/tests/cli_systemd_test.rs (modified)
 - prd.md (modified)
 - spec.md (modified)
 
@@ -195,8 +195,8 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **Files affected:**
 
-- crates/backutil-daemon/src/manager.rs (modified)
-- crates/backutil-lib/src/paths.rs (modified)
+- crates/vigil-daemon/src/manager.rs (modified)
+- crates/vigil-lib/src/paths.rs (modified)
 - changelog.md (modified)
 
 **Testing notes:**
@@ -208,7 +208,7 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **What changed:**
 
-- Added `is_mount_point` helper to `backutil-lib` to detect active FUSE mounts via `/proc/mounts`.
+- Added `is_mount_point` helper to `vigil-lib` to detect active FUSE mounts via `/proc/mounts`.
 - Updated `JobManager` to detect existing mounts during initialization and status refresh.
 - Improved orphaned mount handling in `get_status` monitoring.
 - Added unit tests for mount detection logic.
@@ -219,8 +219,8 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **Files affected:**
 
-- crates/backutil-lib/src/paths.rs (modified)
-- crates/backutil-daemon/src/manager.rs (modified)
+- crates/vigil-lib/src/paths.rs (modified)
+- crates/vigil-daemon/src/manager.rs (modified)
 
 **Testing notes:**
 
@@ -230,23 +230,23 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **What changed:**
 
-- Changed `find_latest_log` logic to sort all files starting with `backutil.log` by their modification time.
-- Removed early exit that prioritized `backutil.log`.
+- Changed `find_latest_log` logic to sort all files starting with `vigil.log` by their modification time.
+- Removed early exit that prioritized `vigil.log`.
 - Added a small delay in `cli_logs_test.rs` to ensure distinct timestamps for modification time sorting across different filesystem resolutions.
 
 **Why:**
 
-- The previous implementation used lexicographical sorting and prioritized `backutil.log` if it existed, which caused stale logs to be shown even when newer dated logs were present.
+- The previous implementation used lexicographical sorting and prioritized `vigil.log` if it existed, which caused stale logs to be shown even when newer dated logs were present.
 
 **Files affected:**
 
-- crates/backutil/src/main.rs (modified)
-- crates/backutil/tests/cli_logs_test.rs (modified)
+- crates/vigil/src/main.rs (modified)
+- crates/vigil/tests/cli_logs_test.rs (modified)
 
 **Testing notes:**
 
 - Verified with `cargo test`.
-- Verified manually by creating stale `backutil.log` and fresh dated logs.
+- Verified manually by creating stale `vigil.log` and fresh dated logs.
 
 ## [2026-01-30] 81e8a4d — cli: fix --quiet flag in logs command and changelog format
 
@@ -262,35 +262,35 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **Files affected:**
 
-- crates/backutil/src/main.rs (modified)
+- crates/vigil/src/main.rs (modified)
 - changelog.md (modified)
 
 ## [2026-01-31] 726680a — cli: improve check error message and fix logs command output
 
 **What changed:**
 
-- Improved `backutil check` to provide a helpful hint to run `backutil init` when a repository is missing.
-- Fixed `backutil logs` to correctly identify `backutil.log` as the latest active log file.
-- Fixed a bug in `backutil logs` where `BufReader` was incorrectly consuming data, leading to empty output.
-- Enhanced `backutil logs` with more robust follow mode logic and better handling of rotated logs.
+- Improved `vigil check` to provide a helpful hint to run `vigil init` when a repository is missing.
+- Fixed `vigil logs` to correctly identify `vigil.log` as the latest active log file.
+- Fixed a bug in `vigil logs` where `BufReader` was incorrectly consuming data, leading to empty output.
+- Enhanced `vigil logs` with more robust follow mode logic and better handling of rotated logs.
 - Added integration tests for both `check` and `logs` commands.
 
 **Why:**
 
-- Resolves user testing feedback where `backutil check` was confusing for new users and `backutil logs` failed to show content.
+- Resolves user testing feedback where `vigil check` was confusing for new users and `vigil logs` failed to show content.
 - Improves CLI usability and troubleshooting experience.
 
 **Files affected:**
 
-- crates/backutil/src/main.rs (modified)
-- crates/backutil/tests/cli_check_test.rs (modified)
-- crates/backutil/tests/cli_logs_test.rs (new)
+- crates/vigil/src/main.rs (modified)
+- crates/vigil/tests/cli_check_test.rs (modified)
+- crates/vigil/tests/cli_logs_test.rs (new)
 
 **Testing notes:**
 
-- Verified `backutil check` shows the new hint when a repository is deleted.
-- Verified `backutil logs` correctly displays existing log entries.
-- Verified `backutil logs -f` correctly follows new entries appended to the log file.
+- Verified `vigil check` shows the new hint when a repository is deleted.
+- Verified `vigil logs` correctly displays existing log entries.
+- Verified `vigil logs -f` correctly follows new entries appended to the log file.
 - All automated tests passed, including new integration tests.
 
 ---
@@ -299,7 +299,7 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **What changed:**
 
-- Fixed `backutil status` to correctly show the most recent snapshot as "last backup" (changed `first()` to `last()`).
+- Fixed `vigil status` to correctly show the most recent snapshot as "last backup" (changed `first()` to `last()`).
 - Fixed daemon to correctly use the global `debounce_seconds` configuration when no per-set override is provided.
 - Improved `refresh_set_status` to preserve live backup metrics (`added_bytes`, `duration_secs`) after successful backup runs.
 - Enhanced file watcher with better logging and robust path matching (including canonicalization).
@@ -308,15 +308,15 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 **Why:**
 
-- Resolves user testing feedback where `backutil status` was not updating the "last backup" time.
+- Resolves user testing feedback where `vigil status` was not updating the "last backup" time.
 - Resolves issues where `touch` or new file additions appeared to not trigger backups (due to incorrect 60s default debounce).
 - Fixes IPC responsiveness during long-running backups and prevents duplicate worker tasks.
 - Improves visibility and reliability of the backup process.
 
 **Files affected:**
 
-- crates/backutil-daemon/src/manager.rs (modified)
-- crates/backutil-daemon/src/watcher.rs (modified)
+- crates/vigil-daemon/src/manager.rs (modified)
+- crates/vigil-daemon/src/watcher.rs (modified)
 
 **Testing notes:**
 
@@ -343,7 +343,7 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
  **Files affected:**
 
-- crates/backutil-daemon/src/manager.rs (modified)
+- crates/vigil-daemon/src/manager.rs (modified)
 
  **Testing notes:**
 
@@ -358,18 +358,18 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 - Made config reload async with retry logic (3 attempts with 2s delay) to handle partial file writes during atomic saves.
 - Added 200ms initial delay before reading config to avoid partial-file reads.
-- Added `backutil reload` CLI subcommand to manually trigger daemon config reload.
+- Added `vigil reload` CLI subcommand to manually trigger daemon config reload.
 - Separated config loading (async, off main loop) from config application (on main loop) via a channel.
 
  **Why:**
 
 - Config file watching events can fire mid-write, causing parse failures. Retry with backoff handles this gracefully.
-- The `backutil reload` CLI command gives users explicit control over config reloading without restarting the daemon.
+- The `vigil reload` CLI command gives users explicit control over config reloading without restarting the daemon.
 
  **Files affected:**
 
-- crates/backutil-daemon/src/main.rs (modified)
-- crates/backutil/src/main.rs (modified)
+- crates/vigil-daemon/src/main.rs (modified)
+- crates/vigil/src/main.rs (modified)
 
  **Testing notes:**
 
@@ -383,24 +383,24 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 The following work was completed in Phase 3-5 (2026-01-26 through 2026-01-30):
 
-- **CLI skeleton and status** (Task #14): `backutil` CLI with `clap`, IPC client, `status` command
-- **CLI backup** (Task #16): `backutil backup [SET]` with completion events, `--no-wait`, `--timeout`
+- **CLI skeleton and status** (Task #14): `vigil` CLI with `clap`, IPC client, `status` command
+- **CLI backup** (Task #16): `vigil backup [SET]` with completion events, `--no-wait`, `--timeout`
 - **CLI mount/unmount** (Task #17): FUSE mount with interactive snapshot picker, unmount support
-- **CLI prune** (Task #18): `backutil prune [SET]` with reclaimed space reporting, exit code 4 on errors
-- **CLI logs** (Task #19): `backutil logs [-f]` with tail, follow mode, rotation handling
+- **CLI prune** (Task #18): `vigil prune [SET]` with reclaimed space reporting, exit code 4 on errors
+- **CLI logs** (Task #19): `vigil logs [-f]` with tail, follow mode, rotation handling
 - **CLI bootstrap/disable/uninstall** (Tasks #20-21): systemd user unit management, `--purge` option
-- **CLI list** (Task #34): `backutil list` with `--json` output
-- **CLI snapshots** (Task #35): `backutil snapshots <SET>` with `--limit` and `--json`
-- **CLI check** (Task #36): `backutil check [SET]` with `--config-only`, exit codes 2/4
+- **CLI list** (Task #34): `vigil list` with `--json` output
+- **CLI snapshots** (Task #35): `vigil snapshots <SET>` with `--limit` and `--json`
+- **CLI check** (Task #36): `vigil check [SET]` with `--config-only`, exit codes 2/4
 - **Short snapshot IDs** (Task #37): 8-character truncated IDs in backup results
 - **Plain English help text** (Task #38): user-friendly CLI help descriptions
 - **Global --quiet/--json flags** (Task #39): machine-readable output and quiet mode for all commands
 - **Backup hang fix** (Task #40): fixed BufReader re-instantiation bug, added timeout/no-wait
 - **Test fixes** (Tasks #41-42): mount test isolation, serial daemon manager tests, env var races
-- **Enhanced status metrics** (Task #32): snapshot count and repo size in `backutil status`
+- **Enhanced status metrics** (Task #32): snapshot count and repo size in `vigil status`
 - **Logging and graceful shutdown** (Task #27): `tracing-appender` daily rotation, `CancellationToken`
 - **Daemon status persistence** (Task #31): restore last backup time from restic on startup
-- **Purge and config reload** (Task #33): `backutil purge`, auto-reload on config change, `ReloadConfig` IPC
+- **Purge and config reload** (Task #33): `vigil purge`, auto-reload on config change, `ReloadConfig` IPC
 - **Bugfixes**: false positive mount detection, deprecated `--last` flag, invalid `--snapshot` flag, stale daemon state, config reload robustness, `time` crate version pinning
 
 All Phase 3-5 tests pass. For detailed implementation notes, use `git log --oneline` or view the git history.
@@ -409,7 +409,7 @@ All Phase 3-5 tests pass. For detailed implementation notes, use `git log --onel
 
 The following foundational work was completed in Phase 1-2:
 
-- **Project scaffolding**: Workspace with `backutil-lib`, `backutil-daemon`, `backutil` crates
+- **Project scaffolding**: Workspace with `vigil-lib`, `vigil-daemon`, `vigil` crates
 - **Config parsing**: TOML config with backup sets, retention policies, glob exclusions
 - **Shared types and IPC**: `Request`/`Response` types, `JobState`, `SetStatus`, `SnapshotInfo`
 - **Path helpers**: XDG-compliant paths for config, logs, socket, PID, mounts
