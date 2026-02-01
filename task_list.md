@@ -212,3 +212,4 @@ Make the `status` command useful even when the daemon is not running.
 | 48 | Guided Onboarding: `backutil setup` | `d819fdd` | 2026-01-31 |
 | 49 | Config Management: `track` and `untrack` | `3a60602` | 2026-01-31 |
 | 51 | Fix auto-prune race conditions and repo lock contention | `f1ab9a8` | 2026-02-01 |
+| 52 | Fix flaky integration tests caused by env var collision | `60a5ae4` | 2026-01-31 |

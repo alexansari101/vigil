@@ -5,6 +5,7 @@ use backutil_daemon::watcher::{FileWatcher, WatcherEvent};
 use backutil_lib::config::{BackupSet, Config, GlobalConfig};
 use backutil_lib::paths;
 use backutil_lib::types::JobState;
+use serial_test::serial;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
@@ -51,6 +52,7 @@ async fn wait_for_snapshot_count(
 /// ```
 #[tokio::test]
 #[ignore]
+#[serial]
 async fn test_file_watcher_to_debounce_integration() -> Result<()> {
     let _ = tracing_subscriber::fmt::try_init();
 
@@ -214,6 +216,7 @@ async fn test_file_watcher_to_debounce_integration() -> Result<()> {
 /// ```
 #[tokio::test]
 #[ignore]
+#[serial]
 async fn test_auto_prune_after_backup() -> Result<()> {
     use backutil_lib::config::RetentionPolicy;
     use backutil_lib::ipc::{Response, ResponseData};

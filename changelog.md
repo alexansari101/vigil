@@ -8,6 +8,31 @@ This file tracks recent changes. For format guidelines, see `developer_guideline
 
 ---
 
+## [2026-02-01] 60a5ae4 — test: fix flaky integration tests caused by environment variable collision
+
+**What changed:**
+
+- Added `#[serial]` attribute from `serial_test` crate to `test_file_watcher_to_debounce_integration` and `test_auto_prune_after_backup`.
+- These tests modify `XDG_CONFIG_HOME` and `XDG_DATA_HOME` environment variables, which are process-global and cause collisions when tests are run in parallel.
+- Serializing these specific tests ensures they run sequentially even when `cargo test` uses multiple threads.
+
+**Why:**
+
+- Integration tests were intermittently failing with `Fatal: .repo_password does not exist` because one test would overwrite the environment pointing to another test's temporary configuration directory.
+
+**Files affected:**
+
+- crates/backutil-daemon/tests/integration_test.rs (modified)
+
+**Testing notes:**
+
+- Reproduced failure by running tests in parallel loop.
+- Verified fix by running 10/10 iterations successfully in a parallel environment.
+- Verified all workspace tests pass.
+- Verified with `cargo fmt` and `cargo clippy`.
+
+---
+
 ## [2026-02-01] — bugfix: resolve auto-prune race conditions and repository lock contention
 
 **What changed:**
