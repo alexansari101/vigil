@@ -34,7 +34,7 @@ The backup landscape is often a choice between **simple but limited** desktop ap
 Ensure these are installed on your Linux system, then install both `vigil` and `vigil-daemon` directly from source:
 
 ```bash
-cargo install --git https://github.com/alexansari101/vigil
+cargo install --git https://github.com/alexansari101/vigil.git vigil vigil-daemon
 ```
 
 ### 2. Guided Setup
